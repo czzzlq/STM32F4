@@ -352,7 +352,8 @@ targets:
         options:
           version: 4
           afterBuildTasks: []
-          asm-compiler: {}
+          asm-compiler:
+            use-microLIB: true
           beforeBuildTasks: []
           c/cpp-compiler:
             CXX_FLAGS: --diag_suppress=1 --diag_suppress=1295
@@ -360,6 +361,7 @@ targets:
             c99-mode: true
             one-elf-section-per-function: true
             optimization: level-0
+            use-microLIB: true
             warnings: unspecified
           global:
             output-debug-info: enable
@@ -367,6 +369,7 @@ targets:
             output-format: elf
             ro-base: "0x08000000"
             rw-base: "0x20000000"
+            use-microLIB: true
         scatterFilePath: <YOUR_SCATTER_FILE>.sct
         storageLayout:
           RAM:

@@ -56,10 +56,14 @@ void lcd_write_reg(uint16_t regno, uint16_t data)
 
 /**
  * @brief   短延时（高优化等级下防止 FSMC 读写过快）
+ * @note    计数变量必须 volatile：普通空转循环在 -O2 下会被整体优化掉，
+ *          导致 LCD 读时序不满足要求
  */
 static void lcd_opt_delay(uint32_t i)
 {
-    while (i--);
+    volatile uint32_t delayCnt = i;
+
+    while (delayCnt--);
 }
 
 /**
