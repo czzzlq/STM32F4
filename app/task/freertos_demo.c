@@ -52,24 +52,23 @@ static uint8_t s_sramTestBuf[SRAM_TEST_SIZE];       /* 写入数据 */
 static uint8_t s_sramTestCheck[SRAM_TEST_SIZE];     /* 回读校验数据 */
 
 /**
- * @brief   探测外部 SRAM 是否存在（写 0xA5/0x5A 再读回比对）
+ * @brief   探测外部 SRAM 是否存在
  * @retval  1 存在；0 不存在（如精英板未焊接 SRAM 芯片）
+ * @note    探测方法：连续写入 8 个互不相同的值后再整体读回比对。
+ *          无芯片时总线行为不可信（可能浮空返回固定电平，或返回
+ *          最后一次写入的值），单字节写读探测会假阳性，多值连续
+ *          探测可保证任一异常总线行为都会比对失败
  */
 static uint8_t sram_probe(void)
 {
-    sram_test_write(SRAM_TEST_OFFSET, 0xA5);
-    if (sram_test_read(SRAM_TEST_OFFSET) != 0xA5)
-    {
-        return 0;
-    }
+    static const uint8_t probePattern[8] = {0x00, 0xFF, 0x55, 0xAA, 0x33, 0xCC, 0xA5, 0x5A};
+    uint8_t probeCheck[8];
 
-    sram_test_write(SRAM_TEST_OFFSET, 0x5A);
-    if (sram_test_read(SRAM_TEST_OFFSET) != 0x5A)
-    {
-        return 0;
-    }
+    sram_write((uint8_t *)probePattern, SRAM_TEST_OFFSET, sizeof(probePattern));
+    memset(probeCheck, 0, sizeof(probeCheck));
+    sram_read(probeCheck, SRAM_TEST_OFFSET, sizeof(probePattern));
 
-    return 1;
+    return (memcmp(probePattern, probeCheck, sizeof(probePattern)) == 0) ? 1 : 0;
 }
 
 /**
