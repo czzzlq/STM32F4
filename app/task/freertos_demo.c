@@ -187,6 +187,32 @@ static void malloc_self_test(void)
         errCount++;
     }
 
+    /* 越界检测演示：破坏分配块头 magic，释放应被拒绝并计数 */
+    {
+        uint8_t *pCorrupt = (uint8_t *)mymalloc(SRAMIN, 32);
+        uint32_t corruptBefore = g_mallocCorruptCount;
+
+        if (pCorrupt != NULL)
+        {
+            *(uint32_t *)(pCorrupt - 4) = 0;        /* 模拟越界写破坏块头 */
+            myfree(SRAMIN, pCorrupt);               /* 应被拒绝释放 */
+
+            if (g_mallocCorruptCount != corruptBefore + 1)
+            {
+                errCount++;
+            }
+        }
+        else
+        {
+            errCount++;
+        }
+
+        printf("[MALLOC] corrupt detect: %s\r\n",
+               (g_mallocCorruptCount > corruptBefore) ? "PASS" : "FAIL");
+
+        my_mem_init(SRAMIN);    /* 重置内部池（被破坏的块不再归还） */
+    }
+
     printf("[MALLOC] self test: %s (%d errors, used IN=%d%%",
            (errCount == 0) ? "PASS" : "FAIL", errCount,
            my_mem_perused(SRAMIN) / 10);

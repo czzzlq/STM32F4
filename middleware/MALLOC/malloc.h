@@ -7,6 +7,7 @@
 #define __MALLOC_H__
 
 #include "system_hal.h"
+#include "common_types.h"
 #include <stddef.h>
 
 /* 未定义 NULL 时兜底（兼容不同标准库实现） */
@@ -46,6 +47,14 @@ struct _m_mallco_dev
 };
 
 extern struct _m_mallco_dev mallco_dev;
+
+/* 越界检测：分配块头部放置 magic number，释放时校验。
+ * 检测到破坏时拒绝释放该块（防止状态表错乱）并递增 g_mallocCorruptCount，
+ * 同时回调 my_mem_corrupt_hook（应用层可重写记录现场） */
+#define MY_MALLOC_MAGIC_ENABLE      1
+
+extern volatile uint32_t g_mallocCorruptCount;  /* 越界破坏累计计数 */
+__WEAK void my_mem_corrupt_hook(uint8_t memx, void *ptr);
 
 /* 用户接口（分配/释放/统计均经临界区保护，多任务安全；不可在中断中调用） */
 void my_mem_init(uint8_t memx);                     /* 内存池初始化 */

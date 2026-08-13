@@ -53,6 +53,24 @@ struct _m_mallco_dev mallco_dev =
     0, 0,                           /* 就绪标志 */
 };
 
+#if MY_MALLOC_MAGIC_ENABLE
+#define MEM_MAGIC   0xA5C3D9E1UL     /* 分配块头 magic（越界检测） */
+
+/* 越界破坏累计计数（应用层可读） */
+volatile uint32_t g_mallocCorruptCount = 0;
+
+/**
+ * @brief   越界破坏回调（弱函数，应用层可重写记录现场）
+ * @param   memx : 内存池编号
+ * @param   ptr  : 被破坏的分配块用户指针
+ */
+__WEAK void my_mem_corrupt_hook(uint8_t memx, void *ptr)
+{
+    (void)memx;
+    (void)ptr;
+}
+#endif /* MY_MALLOC_MAGIC_ENABLE */
+
 /**
  * @brief   内存拷贝（32 位对齐加速）
  * @param   des : 目的地址
@@ -344,7 +362,21 @@ void myfree(uint8_t memx, void *ptr)
         return;
     }
 
+#if MY_MALLOC_MAGIC_ENABLE
+    uint32_t *magicPtr = (uint32_t *)((uint32_t)ptr - 4);
+
+    /* 块头被破坏：拒绝释放（防止状态表错乱），计数并回调 */
+    if (*magicPtr != MEM_MAGIC)
+    {
+        g_mallocCorruptCount++;
+        my_mem_corrupt_hook(memx, ptr);
+        return;
+    }
+
+    my_mem_free(memx, (uint32_t)ptr - (uint32_t)mallco_dev.membase[memx] - 4);
+#else
     my_mem_free(memx, (uint32_t)ptr - (uint32_t)mallco_dev.membase[memx]);
+#endif
 }
 
 /**
@@ -352,17 +384,30 @@ void myfree(uint8_t memx, void *ptr)
  * @param   memx : 内存池编号
  * @param   size : 分配字节数
  * @retval  内存首地址；NULL 表示分配失败
+ * @note    开启越界检测时内部多分配 4 字节 magic 块头，
+ *          用户指针 = 池内偏移 + 4（仍 4 字节对齐）
  */
 void *mymalloc(uint8_t memx, uint32_t size)
 {
-    uint32_t offset = my_mem_malloc(memx, size);
+    uint32_t offset;
+
+#if MY_MALLOC_MAGIC_ENABLE
+    offset = my_mem_malloc(memx, size + 4);
+#else
+    offset = my_mem_malloc(memx, size);
+#endif
 
     if (offset == 0xFFFFFFFF)
     {
         return NULL;
     }
 
+#if MY_MALLOC_MAGIC_ENABLE
+    *(uint32_t *)((uint32_t)mallco_dev.membase[memx] + offset) = MEM_MAGIC;
+    return (void *)((uint32_t)mallco_dev.membase[memx] + offset + 4);
+#else
     return (void *)((uint32_t)mallco_dev.membase[memx] + offset);
+#endif
 }
 
 /**
@@ -374,14 +419,15 @@ void *mymalloc(uint8_t memx, uint32_t size)
  */
 void *myrealloc(uint8_t memx, void *ptr, uint32_t size)
 {
-    uint32_t offset = my_mem_malloc(memx, size);
+    void *newPtr = mymalloc(memx, size);
 
-    if (offset == 0xFFFFFFFF)
+    if (newPtr == NULL)
     {
         return NULL;
     }
 
-    my_mem_copy((void *)((uint32_t)mallco_dev.membase[memx] + offset), ptr, size);
+    my_mem_copy(newPtr, ptr, size);
     myfree(memx, ptr);
-    return (void *)((uint32_t)mallco_dev.membase[memx] + offset);
+
+    return newPtr;
 }
