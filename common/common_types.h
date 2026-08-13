@@ -15,6 +15,7 @@
 #define __COMMON_TYPES_H__
 
 #include <stdio.h>
+#include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
 

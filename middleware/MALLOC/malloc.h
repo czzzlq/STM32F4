@@ -9,6 +9,11 @@
 #include "system_hal.h"
 #include <stddef.h>
 
+/* 未定义 NULL 时兜底（兼容不同标准库实现） */
+#ifndef NULL
+#define NULL 0
+#endif
+
 /* 内存池编号 */
 #define SRAMIN      0       /* 内部 SRAM */
 #define SRAMEX      1       /* 外部 SRAM */

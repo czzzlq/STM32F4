@@ -132,8 +132,8 @@
 #define ATIM_TIMX_PWMIN_CHY_GPIO_PIN        GPIO_PIN_6
 #define ATIM_TIMX_PWMIN_CHY_GPIO_CLK_ENABLE()   do{ __HAL_RCC_GPIOC_CLK_ENABLE(); }while(0)
 
-/* EVCR 寄存器值：PORT=PC(2)<<4 | PIN=PX6(6)<<0 */
-#define ATIM_TIMX_PWMIN_EVCR_VALUE          ((uint32_t)((2u << 4) | (6u << 0)))
+/* EVCR 寄存器值：TIM8_CH1 重映射到 PC6（PORT=PC, PIN=PX6） */
+#define ATIM_TIMX_PWMIN_EVCR_VALUE          ((uint32_t)(AFIO_EVCR_PORT_PC | AFIO_EVCR_PIN_PX6))
 
 #define ATIM_TIMX_PWMIN                     TIM8
 #define ATIM_TIMX_PWMIN_IRQn                TIM8_UP_IRQn

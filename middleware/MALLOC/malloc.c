@@ -21,7 +21,7 @@ static MT_TYPE mem2mapbase[MEM2_ALLOC_TABLE_SIZE] __attribute__((at(SRAM_BASE_AD
 #error SRAM_BASE_ADDR changed! Please recalculate!
 #endif
 
-#if (SRAM_BASE_ADDR + MEM2_MAX_SIZE) != 0X680F0C00
+#if (SRAM_BASE_ADDR + MEM2_MAX_SIZE) != 0X68000020
 #error SRAM_BASE_ADDR + MEM2_MAX_SIZE changed! Please recalculate!
 #endif
 
@@ -31,7 +31,7 @@ static __ALIGNED(64) uint8_t mem2base[MEM2_MAX_SIZE] __attribute__((section(".bs
 
 /* 内存状态表 */
 static MT_TYPE mem1mapbase[MEM1_ALLOC_TABLE_SIZE];                                                          /* 内部 SRAM 状态表 */
-static MT_TYPE mem2mapbase[MEM2_ALLOC_TABLE_SIZE] __attribute__((section(".bss.ARM.__at_0X680F0C00")));     /* 外部 SRAM 状态表 */
+static MT_TYPE mem2mapbase[MEM2_ALLOC_TABLE_SIZE] __attribute__((section(".bss.ARM.__at_0X68000020")));     /* 外部 SRAM 状态表 */
 
 #endif
 
