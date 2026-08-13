@@ -1,50 +1,24 @@
 /**
- ****************************************************************************************************
- * @file        lcd_ex.c
- * @author      ’˝µ„‘≠◊”Õ≈∂”(ALIENTEK)
- * @version     V1.1
- * @date        2023-05-31
- * @brief       lcd_ex.c¥Ê∑≈∏˜∏ˆLCD«˝∂ØICµƒºƒ¥Ê∆˜≥ı ºªØ≤ø∑÷¥˙¬Î,“‘ºÚªØlcd.c,∏√.cŒƒº˛
- *              ≤ª÷±Ω”º”»ÎµΩπ§≥Ã¿Ô√Ê,÷ª”–lcd.cª·”√µΩ,À˘“‘Õ®π˝includeµƒ–Œ ΩÃÌº”.(≤ª“™‘⁄
- *              ∆‰À˚Œƒº˛‘Ÿ∞¸∫¨∏√.cŒƒº˛!!∑Ò‘Úª·±®¥Ì!) 
- * 
- * @license     Copyright (c) 2020-2032, π„÷› ––«“ÌµÁ◊”ø∆ºº”–œﬁπ´Àæ
- ****************************************************************************************************
- * @attention
- *
- *  µ—È∆ΩÃ®:’˝µ„‘≠◊” STM32F103ø™∑¢∞Â
- * ‘⁄œﬂ ”∆µ:www.yuanzige.com
- * ºº ı¬€Ã≥:www.openedv.com
- * π´ÀæÕ¯÷∑:www.alientek.com
- * π∫¬Úµÿ÷∑:openedv.taobao.com
- *
- * –ﬁ∏ƒÀµ√˜
- * V1.0 20200421
- * µ⁄“ª¥Œ∑¢≤º
- * V1.1 20230531
- * 1£¨–¬‘ˆ∂‘ST7796∫ÕILI9806 IC÷ß≥÷
- *
- ****************************************************************************************************
+ * @file    lcd_ex.c
+ * @brief   ÂêÑ LCD È©±Âä® IC ÁöÑÂØÑÂ≠òÂô®ÂàùÂßãÂåñÂ∫èÂàó
+ * @note    Êú¨Êñá‰ª∂Áî± lcd.c ‰ª•ÊñáÊú¨ÊñπÂºèÂåÖÂê´ÁºñËØëÔºà‰∏çË¶ÅÂçïÁã¨Âä†ÂÖ•Â∑•Á®ãÔºâ
+ *          ÂàùÂßãÂåñÊï∞ÊçÆ‰∏éÂéüÂßãÂ∫èÂàóÈÄêÂ≠óËäÇ‰∏ÄËá¥Ôºå‰ªÖÁßªÈô§‰∫ÜÂéüÂéÇÊ≥®Èáä
  */
- 
 #include "../delay/delay.h"
 #include "lcd.h"
 
 
 /**
- * @brief       ST7789 ºƒ¥Ê∆˜≥ı ºªØ¥˙¬Î
- * @param       Œﬁ
- * @retval      Œﬁ
+ * @brief   ST7789_REGINIT ÂØÑÂ≠òÂô®ÂàùÂßãÂåñÂ∫èÂàó
  */
 void lcd_ex_st7789_reginit(void)
 {
     lcd_wr_regno(0x11);
 
-    systickDelay_ms(120); 
+    systickDelay_ms(120);
 
     lcd_wr_regno(0x36);
     lcd_wr_data(0x00);
-
 
     lcd_wr_regno(0x3A);
     lcd_wr_data(0X05);
@@ -59,8 +33,8 @@ void lcd_ex_st7789_reginit(void)
     lcd_wr_regno(0xB7);
     lcd_wr_data(0x35);
 
-    lcd_wr_regno(0xBB); /* vcom */
-    lcd_wr_data(0x32);  /* 30 */
+    lcd_wr_regno(0xBB);
+    lcd_wr_data(0x32);
 
     lcd_wr_regno(0xC0);
     lcd_wr_data(0x0C);
@@ -68,20 +42,20 @@ void lcd_ex_st7789_reginit(void)
     lcd_wr_regno(0xC2);
     lcd_wr_data(0x01);
 
-    lcd_wr_regno(0xC3); /* vrh */
-    lcd_wr_data(0x10);  /* 17 0D */
+    lcd_wr_regno(0xC3);
+    lcd_wr_data(0x10);
 
-    lcd_wr_regno(0xC4); /* vdv */
-    lcd_wr_data(0x20);  /* 20 */
+    lcd_wr_regno(0xC4);
+    lcd_wr_data(0x20);
 
     lcd_wr_regno(0xC6);
     lcd_wr_data(0x0f);
 
     lcd_wr_regno(0xD0);
-    lcd_wr_data(0xA4); 
-    lcd_wr_data(0xA1); 
+    lcd_wr_data(0xA4);
+    lcd_wr_data(0xA1);
 
-    lcd_wr_regno(0xE0); /* Set Gamma  */
+    lcd_wr_regno(0xE0);
     lcd_wr_data(0xd0);
     lcd_wr_data(0x00);
     lcd_wr_data(0x02);
@@ -97,8 +71,7 @@ void lcd_ex_st7789_reginit(void)
     lcd_wr_data(0x14);
     lcd_wr_data(0x17);
 
-
-    lcd_wr_regno(0XE1);  /* Set Gamma */
+    lcd_wr_regno(0XE1);
     lcd_wr_data(0xd0);
     lcd_wr_data(0x00);
     lcd_wr_data(0x02);
@@ -111,9 +84,8 @@ void lcd_ex_st7789_reginit(void)
     lcd_wr_data(0x0e);
     lcd_wr_data(0x1c);
     lcd_wr_data(0x17);
-    lcd_wr_data(0x1b); 
+    lcd_wr_data(0x1b);
     lcd_wr_data(0x1e);
-
 
     lcd_wr_regno(0x2A);
     lcd_wr_data(0x00);
@@ -127,13 +99,12 @@ void lcd_ex_st7789_reginit(void)
     lcd_wr_data(0x01);
     lcd_wr_data(0x3f);
 
-    lcd_wr_regno(0x29); /* display on */
+    lcd_wr_regno(0x29);
 }
 
+
 /**
- * @brief       ILI9341ºƒ¥Ê∆˜≥ı ºªØ¥˙¬Î
- * @param       Œﬁ
- * @retval      Œﬁ
+ * @brief   ILI9341_REGINIT ÂØÑÂ≠òÂô®ÂàùÂßãÂåñÂ∫èÂàó
  */
 void lcd_ex_ili9341_reginit(void)
 {
@@ -161,30 +132,30 @@ void lcd_ex_ili9341_reginit(void)
     lcd_wr_regno(0xEA);
     lcd_wr_data(0x00);
     lcd_wr_data(0x00);
-    lcd_wr_regno(0xC0); /* Power control */
-    lcd_wr_data(0x1B);  /* VRH[5:0] */
-    lcd_wr_regno(0xC1); /* Power control */
-    lcd_wr_data(0x01);  /* SAP[2:0];BT[3:0] */
-    lcd_wr_regno(0xC5); /* VCM control */
-    lcd_wr_data(0x30);  /* 3F */
-    lcd_wr_data(0x30);  /* 3C */
-    lcd_wr_regno(0xC7); /* VCM control2 */
+    lcd_wr_regno(0xC0);
+    lcd_wr_data(0x1B);
+    lcd_wr_regno(0xC1);
+    lcd_wr_data(0x01);
+    lcd_wr_regno(0xC5);
+    lcd_wr_data(0x30);
+    lcd_wr_data(0x30);
+    lcd_wr_regno(0xC7);
     lcd_wr_data(0XB7);
-    lcd_wr_regno(0x36); /*  Memory Access Control */
+    lcd_wr_regno(0x36);
     lcd_wr_data(0x48);
     lcd_wr_regno(0x3A);
     lcd_wr_data(0x55);
     lcd_wr_regno(0xB1);
     lcd_wr_data(0x00);
     lcd_wr_data(0x1A);
-    lcd_wr_regno(0xB6); /*  Display Function Control */
+    lcd_wr_regno(0xB6);
     lcd_wr_data(0x0A);
     lcd_wr_data(0xA2);
-    lcd_wr_regno(0xF2); /*  3Gamma Function Disable */
+    lcd_wr_regno(0xF2);
     lcd_wr_data(0x00);
-    lcd_wr_regno(0x26); /* Gamma curve selected */
+    lcd_wr_regno(0x26);
     lcd_wr_data(0x01);
-    lcd_wr_regno(0xE0); /* Set Gamma */
+    lcd_wr_regno(0xE0);
     lcd_wr_data(0x0F);
     lcd_wr_data(0x2A);
     lcd_wr_data(0x28);
@@ -200,7 +171,7 @@ void lcd_ex_ili9341_reginit(void)
     lcd_wr_data(0x00);
     lcd_wr_data(0x00);
     lcd_wr_data(0x00);
-    lcd_wr_regno(0XE1);    /* Set Gamma */
+    lcd_wr_regno(0XE1);
     lcd_wr_data(0x00);
     lcd_wr_data(0x15);
     lcd_wr_data(0x17);
@@ -226,16 +197,14 @@ void lcd_ex_ili9341_reginit(void)
     lcd_wr_data(0x00);
     lcd_wr_data(0x00);
     lcd_wr_data(0xef);
-    lcd_wr_regno(0x11); /* Exit Sleep */
+    lcd_wr_regno(0x11);
     systickDelay_ms(120);
-    lcd_wr_regno(0x29); /* display on */
+    lcd_wr_regno(0x29);
  }
- 
+
 
 /**
- * @brief       NT35310ºƒ¥Ê∆˜≥ı ºªØ¥˙¬Î 
- * @param       Œﬁ
- * @retval      Œﬁ
+ * @brief   NT35310_REGINIT ÂØÑÂ≠òÂô®ÂàùÂßãÂåñÂ∫èÂàó
  */
 void lcd_ex_nt35310_reginit(void)
 {
@@ -252,9 +221,8 @@ void lcd_ex_nt35310_reginit(void)
     lcd_wr_regno(0xDF);
     lcd_wr_data(0x10);
 
-    /* VCOMvoltage */
     lcd_wr_regno(0xC4);
-    lcd_wr_data(0x8F);  /* 5f */
+    lcd_wr_data(0x8F);
 
     lcd_wr_regno(0xC6);
     lcd_wr_data(0x00);
@@ -901,7 +869,7 @@ void lcd_ex_nt35310_reginit(void)
     lcd_wr_data(0x00);
 
     lcd_wr_regno(0x3A);
-    lcd_wr_data(0x55);  /* 66 */
+    lcd_wr_data(0x55);
 
     lcd_wr_regno(0x11);
     systickDelay_ms(100);
@@ -918,33 +886,32 @@ void lcd_ex_nt35310_reginit(void)
     lcd_wr_regno(0x2c);
 }
 
+
 /**
- * @brief       ST7796ºƒ¥Ê∆˜≥ı ºªØ¥˙¬Î 
- * @param       Œﬁ
- * @retval      Œﬁ
+ * @brief   ST7796_REGINIT ÂØÑÂ≠òÂô®ÂàùÂßãÂåñÂ∫èÂàó
  */
 void lcd_ex_st7796_reginit(void)
 {
     lcd_wr_regno(0x11);
 
-    systickDelay_ms(120); 
+    systickDelay_ms(120);
 
-    lcd_wr_regno(0x36); /* Memory Data Access Control MY,MX~~ */
+    lcd_wr_regno(0x36);
     lcd_wr_data(0x48);
-    
+
     lcd_wr_regno(0x3A);
     lcd_wr_data(0x55);
-    
+
     lcd_wr_regno(0xF0);
     lcd_wr_data(0xC3);
-    
+
     lcd_wr_regno(0xF0);
     lcd_wr_data(0x96);
 
     lcd_wr_regno(0xB4);
     lcd_wr_data(0x01);
-    
-    lcd_wr_regno(0xB6); /* Display Function Control */
+
+    lcd_wr_regno(0xB6);
     lcd_wr_data(0x0A);
     lcd_wr_data(0xA2);
 
@@ -966,7 +933,7 @@ void lcd_ex_st7796_reginit(void)
     lcd_wr_data(0xA7);
 
     lcd_wr_regno(0xC5);
-    lcd_wr_data(0x16);   
+    lcd_wr_data(0x16);
 
     lcd_wr_regno(0xE8);
     lcd_wr_data(0x40);
@@ -1022,10 +989,9 @@ void lcd_ex_st7796_reginit(void)
     lcd_wr_regno(0x29);
 }
 
+
 /**
- * @brief       NT35510ºƒ¥Ê∆˜≥ı ºªØ¥˙¬Î 
- * @param       Œﬁ
- * @retval      Œﬁ
+ * @brief   NT35510_REGINIT ÂØÑÂ≠òÂô®ÂàùÂßãÂåñÂ∫èÂàó
  */
 void lcd_ex_nt35510_reginit(void)
 {
@@ -1034,60 +1000,60 @@ void lcd_ex_nt35510_reginit(void)
     lcd_write_reg(0xF002, 0x52);
     lcd_write_reg(0xF003, 0x08);
     lcd_write_reg(0xF004, 0x01);
-    /* AVDD Set AVDD 5.2V */
+
     lcd_write_reg(0xB000, 0x0D);
     lcd_write_reg(0xB001, 0x0D);
     lcd_write_reg(0xB002, 0x0D);
-    /* AVDD ratio */
+
     lcd_write_reg(0xB600, 0x34);
     lcd_write_reg(0xB601, 0x34);
     lcd_write_reg(0xB602, 0x34);
-    /* AVEE -5.2V */
+
     lcd_write_reg(0xB100, 0x0D);
     lcd_write_reg(0xB101, 0x0D);
     lcd_write_reg(0xB102, 0x0D);
-    /* AVEE ratio */
+
     lcd_write_reg(0xB700, 0x34);
     lcd_write_reg(0xB701, 0x34);
     lcd_write_reg(0xB702, 0x34);
-    /* VCL -2.5V */
+
     lcd_write_reg(0xB200, 0x00);
     lcd_write_reg(0xB201, 0x00);
     lcd_write_reg(0xB202, 0x00);
-    /* VCL ratio */
+
     lcd_write_reg(0xB800, 0x24);
     lcd_write_reg(0xB801, 0x24);
     lcd_write_reg(0xB802, 0x24);
-    /* VGH 15V (Free pump) */
+
     lcd_write_reg(0xBF00, 0x01);
     lcd_write_reg(0xB300, 0x0F);
     lcd_write_reg(0xB301, 0x0F);
     lcd_write_reg(0xB302, 0x0F);
-    /* VGH ratio */
+
     lcd_write_reg(0xB900, 0x34);
     lcd_write_reg(0xB901, 0x34);
     lcd_write_reg(0xB902, 0x34);
-    /* VGL_REG -10V */
+
     lcd_write_reg(0xB500, 0x08);
     lcd_write_reg(0xB501, 0x08);
     lcd_write_reg(0xB502, 0x08);
     lcd_write_reg(0xC200, 0x03);
-    /* VGLX ratio */
+
     lcd_write_reg(0xBA00, 0x24);
     lcd_write_reg(0xBA01, 0x24);
     lcd_write_reg(0xBA02, 0x24);
-    /* VGMP/VGSP 4.5V/0V */
+
     lcd_write_reg(0xBC00, 0x00);
     lcd_write_reg(0xBC01, 0x78);
     lcd_write_reg(0xBC02, 0x00);
-    /* VGMN/VGSN -4.5V/0V */
+
     lcd_write_reg(0xBD00, 0x00);
     lcd_write_reg(0xBD01, 0x78);
     lcd_write_reg(0xBD02, 0x00);
-    /* VCOM */
+
     lcd_write_reg(0xBE00, 0x00);
     lcd_write_reg(0xBE01, 0x64);
-    /* Gamma Setting */
+
     lcd_write_reg(0xD100, 0x00);
     lcd_write_reg(0xD101, 0x33);
     lcd_write_reg(0xD102, 0x00);
@@ -1405,55 +1371,54 @@ void lcd_ex_nt35510_reginit(void)
     lcd_write_reg(0xD631, 0x33);
     lcd_write_reg(0xD632, 0x03);
     lcd_write_reg(0xD633, 0x6D);
-    /* LV2 Page 0 enable */
+
     lcd_write_reg(0xF000, 0x55);
     lcd_write_reg(0xF001, 0xAA);
     lcd_write_reg(0xF002, 0x52);
     lcd_write_reg(0xF003, 0x08);
     lcd_write_reg(0xF004, 0x00);
-    /* Display control */
+
     lcd_write_reg(0xB100, 0xCC);
     lcd_write_reg(0xB101, 0x00);
-    /* Source hold time */
+
     lcd_write_reg(0xB600, 0x05);
-    /* Gate EQ control */
+
     lcd_write_reg(0xB700, 0x70);
     lcd_write_reg(0xB701, 0x70);
-    /* Source EQ control (Mode 2) */
+
     lcd_write_reg(0xB800, 0x01);
     lcd_write_reg(0xB801, 0x03);
     lcd_write_reg(0xB802, 0x03);
     lcd_write_reg(0xB803, 0x03);
-    /* Inversion mode (2-dot) */
+
     lcd_write_reg(0xBC00, 0x02);
     lcd_write_reg(0xBC01, 0x00);
     lcd_write_reg(0xBC02, 0x00);
-    /* Timing control 4H w/ 4-delay */
+
     lcd_write_reg(0xC900, 0xD0);
     lcd_write_reg(0xC901, 0x02);
     lcd_write_reg(0xC902, 0x50);
     lcd_write_reg(0xC903, 0x50);
     lcd_write_reg(0xC904, 0x50);
     lcd_write_reg(0x3500, 0x00);
-    lcd_write_reg(0x3A00, 0x55); /* 16-bit/pixel */
+    lcd_write_reg(0x3A00, 0x55);
     lcd_wr_regno(0x1100);
     systickDelay_us(120);
     lcd_wr_regno(0x2900);
 }
 
+
 /**
- * @brief       ILI9806ºƒ¥Ê∆˜≥ı ºªØ¥˙¬Î 
- * @param       Œﬁ
- * @retval      Œﬁ
+ * @brief   ILI9806_REGINIT ÂØÑÂ≠òÂô®ÂàùÂßãÂåñÂ∫èÂàó
  */
 void lcd_ex_ili9806_reginit(void)
 {
-    lcd_wr_regno(0xFF); /* EXTC Command Set enable register */
+    lcd_wr_regno(0xFF);
     lcd_wr_data(0xFF);
     lcd_wr_data(0x98);
     lcd_wr_data(0x06);
 
-    lcd_wr_regno(0xBC); /* GIP 1 */
+    lcd_wr_regno(0xBC);
     lcd_wr_data(0x01);
     lcd_wr_data(0x0F);
     lcd_wr_data(0x61);
@@ -1476,7 +1441,7 @@ void lcd_ex_ili9806_reginit(void)
     lcd_wr_data(0x00);
     lcd_wr_data(0x40);
 
-    lcd_wr_regno(0xBD); /* GIP 2 */
+    lcd_wr_regno(0xBD);
     lcd_wr_data(0x01);
     lcd_wr_data(0x23);
     lcd_wr_data(0x45);
@@ -1486,7 +1451,7 @@ void lcd_ex_ili9806_reginit(void)
     lcd_wr_data(0x45);
     lcd_wr_data(0x67);
 
-    lcd_wr_regno(0xBE); /* GIP 3 */
+    lcd_wr_regno(0xBE);
     lcd_wr_data(0x00);
     lcd_wr_data(0x01);
     lcd_wr_data(0xAB);
@@ -1497,22 +1462,22 @@ void lcd_ex_ili9806_reginit(void)
     lcd_wr_data(0x22);
     lcd_wr_data(0x22);
 
-    lcd_wr_regno(0xC7); /* VCOM Control */
+    lcd_wr_regno(0xC7);
     lcd_wr_data(0x36);
 
-    lcd_wr_regno(0xED); /* EN_volt_reg VGMP / VGMN /VGSP / VGSN voltage to output */
+    lcd_wr_regno(0xED);
     lcd_wr_data(0x7F);
     lcd_wr_data(0x0F);
 
-    lcd_wr_regno(0XC0); /* Power Control 1 Setting AVDD / AVEE / VGH / VGL */
+    lcd_wr_regno(0XC0);
     lcd_wr_data(0x0F);
     lcd_wr_data(0x0B);
-    lcd_wr_data(0x0A);  /* VGH 15V,VGLO-10V */
+    lcd_wr_data(0x0A);
 
-    lcd_wr_regno(0XFC); /* AVDD / AVEE generated by internal pumping. */
+    lcd_wr_regno(0XFC);
     lcd_wr_data(0x08);
 
-    lcd_wr_regno(0XDF); 
+    lcd_wr_regno(0XDF);
     lcd_wr_data(0x00);
     lcd_wr_data(0x00);
     lcd_wr_data(0x00);
@@ -1520,132 +1485,131 @@ void lcd_ex_ili9806_reginit(void)
     lcd_wr_data(0x00);
     lcd_wr_data(0x20);
 
-    lcd_wr_regno(0XF3); /* DVDD Voltage Setting */
+    lcd_wr_regno(0XF3);
     lcd_wr_data(0x74);
 
-    lcd_wr_regno(0xB4); /* Inversion Type */
-    lcd_wr_data(0x00);  /* 02 */
-    lcd_wr_data(0x00);  /* 02 */
-    lcd_wr_data(0x00);  /* 02 */
+    lcd_wr_regno(0xB4);
+    lcd_wr_data(0x00);
+    lcd_wr_data(0x00);
+    lcd_wr_data(0x00);
 
-    lcd_wr_regno(0xF7); /* Resolution Control */
-    lcd_wr_data(0x82);  /* 480*800 */
+    lcd_wr_regno(0xF7);
+    lcd_wr_data(0x82);
 
-    lcd_wr_regno(0xB1); /* FRAME RATE Setting */
+    lcd_wr_regno(0xB1);
     lcd_wr_data(0x00);
     lcd_wr_data(0x13);
-    lcd_wr_data(0x13); 
+    lcd_wr_data(0x13);
 
-    lcd_wr_regno(0XF2); /* CR_EQ_PC_SDT  #C0,06,40,28 */
+    lcd_wr_regno(0XF2);
     lcd_wr_data(0x80);
     lcd_wr_data(0x04);
     lcd_wr_data(0x40);
     lcd_wr_data(0x28);
 
-    lcd_wr_regno(0XC1); /* Power Control 2  SD OP Bias_VRH1_VRH2_EXT_CPCK_SEL */
+    lcd_wr_regno(0XC1);
     lcd_wr_data(0x17);
-    lcd_wr_data(0x88);  /* VGMP */
-    lcd_wr_data(0x88);  /* VGMN */
+    lcd_wr_data(0x88);
+    lcd_wr_data(0x88);
     lcd_wr_data(0x20);
 
-    lcd_wr_regno(0xE0); /* Positive Gamma Control */
-    lcd_wr_data(0x00);  /* P1 */
-    lcd_wr_data(0x0A);  /* P2 */
-    lcd_wr_data(0x12);  /* P3 */
-    lcd_wr_data(0x10);  /* P4 */
-    lcd_wr_data(0x0E);  /* P5 */
-    lcd_wr_data(0x20);  /* P6 */
-    lcd_wr_data(0xCC);  /* P7 */
-    lcd_wr_data(0x07);  /* P8 */
-    lcd_wr_data(0x06);  /* P9 */
-    lcd_wr_data(0x0B);  /* P10 */
-    lcd_wr_data(0x0E);  /* P11 */
-    lcd_wr_data(0x0F);  /* P12 */
-    lcd_wr_data(0x0D);  /* P13 */
-    lcd_wr_data(0x15);  /* P14 */
-    lcd_wr_data(0x10);  /* P15 */
-    lcd_wr_data(0x00);  /* P16 */
+    lcd_wr_regno(0xE0);
+    lcd_wr_data(0x00);
+    lcd_wr_data(0x0A);
+    lcd_wr_data(0x12);
+    lcd_wr_data(0x10);
+    lcd_wr_data(0x0E);
+    lcd_wr_data(0x20);
+    lcd_wr_data(0xCC);
+    lcd_wr_data(0x07);
+    lcd_wr_data(0x06);
+    lcd_wr_data(0x0B);
+    lcd_wr_data(0x0E);
+    lcd_wr_data(0x0F);
+    lcd_wr_data(0x0D);
+    lcd_wr_data(0x15);
+    lcd_wr_data(0x10);
+    lcd_wr_data(0x00);
 
-    lcd_wr_regno(0xE1); /* Negative Gamma Correction */
-    lcd_wr_data(0x00);  /* P1 */
-    lcd_wr_data(0x0B);  /* P2 */
-    lcd_wr_data(0x13);  /* P3 */
-    lcd_wr_data(0x0D);  /* P4 */
-    lcd_wr_data(0x0E);  /* P5 */
-    lcd_wr_data(0x1B);  /* P6 */
-    lcd_wr_data(0x71);  /* P7 */
-    lcd_wr_data(0x06);  /* P8 */
-    lcd_wr_data(0x06);  /* P9 */
-    lcd_wr_data(0x0A);  /* P10 */
-    lcd_wr_data(0x0F);  /* P11 */
-    lcd_wr_data(0x0E);  /* P12 */
-    lcd_wr_data(0x0F);  /* P13 */
-    lcd_wr_data(0x15);  /* P14 */
-    lcd_wr_data(0x0C);  /* P15 */
-    lcd_wr_data(0x00);  /* P16 */
+    lcd_wr_regno(0xE1);
+    lcd_wr_data(0x00);
+    lcd_wr_data(0x0B);
+    lcd_wr_data(0x13);
+    lcd_wr_data(0x0D);
+    lcd_wr_data(0x0E);
+    lcd_wr_data(0x1B);
+    lcd_wr_data(0x71);
+    lcd_wr_data(0x06);
+    lcd_wr_data(0x06);
+    lcd_wr_data(0x0A);
+    lcd_wr_data(0x0F);
+    lcd_wr_data(0x0E);
+    lcd_wr_data(0x0F);
+    lcd_wr_data(0x15);
+    lcd_wr_data(0x0C);
+    lcd_wr_data(0x00);
 
-    lcd_wr_regno(0x2a);   
+    lcd_wr_regno(0x2a);
     lcd_wr_data(0x00);
     lcd_wr_data(0x00);
     lcd_wr_data(0x01);
     lcd_wr_data(0xdf);
 
-    lcd_wr_regno(0x2b);   
+    lcd_wr_regno(0x2b);
     lcd_wr_data(0x00);
     lcd_wr_data(0x00);
     lcd_wr_data(0x03);
     lcd_wr_data(0x1f);
 
-    lcd_wr_regno(0x3A); /* Pixel Format */
+    lcd_wr_regno(0x3A);
     lcd_wr_data(0x55);
 
-    lcd_wr_regno(0x36); /* Memory Access Control */
-    lcd_wr_data(0x00);  /* 02-180 */
+    lcd_wr_regno(0x36);
+    lcd_wr_data(0x00);
 
     lcd_wr_regno(0x11);
-    systickDelay_ms(120);   
-    lcd_wr_regno(0x29);  
-    systickDelay_ms(20);  
+    systickDelay_ms(120);
+    lcd_wr_regno(0x29);
+    systickDelay_ms(20);
     lcd_wr_regno(0x2C);
 }
 
+
 /**
- * @brief       SSD1963ºƒ¥Ê∆˜≥ı ºªØ¥˙¬Î 
- * @param       Œﬁ
- * @retval      Œﬁ
+ * @brief   SSD1963_REGINIT ÂØÑÂ≠òÂô®ÂàùÂßãÂåñÂ∫èÂàó
  */
 void lcd_ex_ssd1963_reginit(void)
 {
-    lcd_wr_regno(0xE2); /* Set PLL with OSC = 10MHz (hardware),	Multiplier N = 35, 250MHz < VCO < 800MHz = OSC*(N+1), VCO = 300MHz */
-    lcd_wr_data(0x1D);  /* ≤Œ ˝1 */
-    lcd_wr_data(0x02);  /* ≤Œ ˝2 Divider M = 2, PLL = 300/(M+1) = 100MHz */
-    lcd_wr_data(0x04);  /* ≤Œ ˝3 Validate M and N values */
+    lcd_wr_regno(0xE2);
+    lcd_wr_data(0x1D);
+    lcd_wr_data(0x02);
+    lcd_wr_data(0x04);
     systickDelay_us(100);
-    lcd_wr_regno(0xE0); /*  Start PLL command */
-    lcd_wr_data(0x01);  /*  enable PLL */
+    lcd_wr_regno(0xE0);
+    lcd_wr_data(0x01);
     systickDelay_ms(10);
-    lcd_wr_regno(0xE0); /*  Start PLL command again */
-    lcd_wr_data(0x03);  /*  now, use PLL output as system clock */
+    lcd_wr_regno(0xE0);
+    lcd_wr_data(0x03);
     systickDelay_ms(12);
-    lcd_wr_regno(0x01); /* »Ì∏¥Œª */
+    lcd_wr_regno(0x01);
     systickDelay_ms(10);
 
-    lcd_wr_regno(0xE6); /* …Ë÷√œÒÀÿ∆µ¬ ,33Mhz */
+    lcd_wr_regno(0xE6);
     lcd_wr_data(0x2F);
     lcd_wr_data(0xFF);
     lcd_wr_data(0xFF);
 
-    lcd_wr_regno(0xB0); /* …Ë÷√LCDƒ£ Ω */
-    lcd_wr_data(0x20);  /* 24Œªƒ£ Ω */
-    lcd_wr_data(0x00);  /* TFT ƒ£ Ω */
+    lcd_wr_regno(0xB0);
+    lcd_wr_data(0x20);
+    lcd_wr_data(0x00);
 
-    lcd_wr_data((SSD_HOR_RESOLUTION - 1) >> 8); /* …Ë÷√LCDÀÆ∆ΩœÒÀÿ */
+    lcd_wr_data((SSD_HOR_RESOLUTION - 1) >> 8);
     lcd_wr_data(SSD_HOR_RESOLUTION - 1);
-    lcd_wr_data((SSD_VER_RESOLUTION - 1) >> 8); /* …Ë÷√LCD¥π÷±œÒÀÿ */
+    lcd_wr_data((SSD_VER_RESOLUTION - 1) >> 8);
     lcd_wr_data(SSD_VER_RESOLUTION - 1);
-    lcd_wr_data(0x00);  /* RGB–Ú¡– */
+    lcd_wr_data(0x00);
 
-    lcd_wr_regno(0xB4); /* Set horizontal period */
+    lcd_wr_regno(0xB4);
     lcd_wr_data((SSD_HT - 1) >> 8);
     lcd_wr_data(SSD_HT - 1);
     lcd_wr_data(SSD_HPS >> 8);
@@ -1654,7 +1618,7 @@ void lcd_ex_ssd1963_reginit(void)
     lcd_wr_data(0x00);
     lcd_wr_data(0x00);
     lcd_wr_data(0x00);
-    lcd_wr_regno(0xB6); /* Set vertical perio */
+    lcd_wr_regno(0xB6);
     lcd_wr_data((SSD_VT - 1) >> 8);
     lcd_wr_data(SSD_VT - 1);
     lcd_wr_data(SSD_VPS >> 8);
@@ -1663,37 +1627,26 @@ void lcd_ex_ssd1963_reginit(void)
     lcd_wr_data(0x00);
     lcd_wr_data(0x00);
 
-    lcd_wr_regno(0xF0); /* …Ë÷√SSD1963”ÎCPUΩ”ø⁄Œ™16bit */
-    lcd_wr_data(0x03);  /* 16-bit(565 format) data for 16bpp */
+    lcd_wr_regno(0xF0);
+    lcd_wr_data(0x03);
 
-    lcd_wr_regno(0x29); /* ø™∆Ùœ‘ æ */
-    /* …Ë÷√PWM ‰≥ˆ  ±≥π‚Õ®π˝’ºø’±»ø…µ˜ */
-    lcd_wr_regno(0xD0); /* …Ë÷√◊‘∂Ø∞◊∆Ω∫‚DBC */
-    lcd_wr_data(0x00);  /* disable */
+    lcd_wr_regno(0x29);
 
-    lcd_wr_regno(0xBE); /* ≈‰÷√PWM ‰≥ˆ */
-    lcd_wr_data(0x05);  /* 1…Ë÷√PWM∆µ¬  */
-    lcd_wr_data(0xFE);  /* 2…Ë÷√PWM’ºø’±» */
-    lcd_wr_data(0x01);  /* 3…Ë÷√C */
-    lcd_wr_data(0x00);  /* 4…Ë÷√D */
-    lcd_wr_data(0x00);  /* 5…Ë÷√E */
-    lcd_wr_data(0x00);  /* 6…Ë÷√F */
+    lcd_wr_regno(0xD0);
+    lcd_wr_data(0x00);
 
-    lcd_wr_regno(0xB8); /* …Ë÷√GPIO≈‰÷√ */
-    lcd_wr_data(0x03);  /* 2∏ˆIOø⁄…Ë÷√≥… ‰≥ˆ */
-    lcd_wr_data(0x01);  /* GPIO π”√’˝≥£µƒIOπ¶ƒ‹ */
+    lcd_wr_regno(0xBE);
+    lcd_wr_data(0x05);
+    lcd_wr_data(0xFE);
+    lcd_wr_data(0x01);
+    lcd_wr_data(0x00);
+    lcd_wr_data(0x00);
+    lcd_wr_data(0x00);
+
+    lcd_wr_regno(0xB8);
+    lcd_wr_data(0x03);
+    lcd_wr_data(0x01);
     lcd_wr_regno(0xBA);
-    lcd_wr_data(0X01);  /* GPIO[1:0]=01,øÿ÷∆LCD∑ΩœÚ */
+    lcd_wr_data(0X01);
 }
-
-
-
-
-
-
-
-
-
-
-
 

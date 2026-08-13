@@ -1,133 +1,24 @@
 /**
- ****************************************************************************************************
- * @file        gtim.h
- * @author      ÕıµãÔ­×ÓÍÅ¶Ó(ALIENTEK)
- * @version     V1.3
- * @date        2020-04-20
- * @brief       Í¨ÓÃ¶¨Ê±Æ÷ Çı¶¯´úÂë
- * @license     Copyright (c) 2020-2032, ¹ãÖİÊĞĞÇÒíµç×Ó¿Æ¼¼ÓĞÏŞ¹«Ë¾
- ****************************************************************************************************
- * @attention
- *
- * ÊµÑéÆ½Ì¨:ÕıµãÔ­×Ó STM32F103¿ª·¢°å
- * ÔÚÏßÊÓÆµ:www.yuanzige.com
- * ¼¼ÊõÂÛÌ³:www.openedv.com
- * ¹«Ë¾ÍøÖ·:www.alientek.com
- * ¹ºÂòµØÖ·:openedv.taobao.com
- *
- * ĞŞ¸ÄËµÃ÷
- * V1.0 20200420
- * µÚÒ»´Î·¢²¼
- * V1.1 20200420
- * ĞÂÔögtim_timx_pwm_chy_initº¯Êı
- * V1.2 20200420
- * 1,ĞÂÔögtim_timx_cap_chy_initº¯Êı
- * V1.3 20200420
- * 1,Ö§³ÖÍâ²¿Âö³å¼ÆÊı¹¦ÄÜ
- * 2,ĞÂÔögtim_timx_cnt_chy_init,gtim_timx_cnt_chy_get_countºÍgtim_timx_cnt_chy_restartÈı¸öº¯Êı  
- *
- ****************************************************************************************************
+ * @file    gtim.h
+ * @brief   é€šç”¨å®šæ—¶å™¨é©±åŠ¨æ¥å£ï¼ˆå®šæ—¶ä¸­æ–­ / PWM è¾“å‡º / è¾“å…¥æ•è· / å¤–éƒ¨è®¡æ•°ï¼‰
+ * @note    ç¡¬ä»¶é…ç½®è§ bsp/bsp_timer.h
  */
+#ifndef __GTIM_H__
+#define __GTIM_H__
 
-#ifndef __GTIM_H
-#define __GTIM_H
+#include "bsp_timer.h"
 
-#include "./SYSTEM/sys/sys.h"
+/* é€šç”¨å®šæ—¶å™¨ï¼šå®šæ—¶ä¸­æ–­ */
+void gtim_timx_int_init(uint16_t arr, uint16_t psc);
+/* é€šç”¨å®šæ—¶å™¨ï¼šPWM è¾“å‡º */
+void gtim_timx_pwm_chy_init(uint16_t arr, uint16_t psc);
+void gtim_timx_pwm_setcompare(uint32_t compare);
+uint32_t get_timx_capture(void);
+/* é€šç”¨å®šæ—¶å™¨ï¼šè¾“å…¥æ•è·ï¼ˆé«˜ç”µå¹³è„‰å®½æµ‹é‡ï¼‰ */
+void gtim_timx_cap_chy_init(uint16_t arr, uint16_t psc);
+/* é€šç”¨å®šæ—¶å™¨ï¼šå¤–éƒ¨è®¡æ•° */
+void gtim_timx_cnt_chy_init(uint16_t psc);
+uint32_t gtim_timx_cnt_chy_get_count(void);
+void gtim_timx_cnt_chy_restart(void);
 
-/******************************************************************************************/
-/* Í¨ÓÃ¶¨Ê±Æ÷ ¶¨Òå */
-
-/* TIMX ÖĞ¶Ï¶¨Òå 
- * Ä¬ÈÏÊÇÕë¶ÔTIM2~TIM5, TIM12~TIM17.
- * ×¢Òâ: Í¨¹ıĞŞ¸ÄÕâ4¸öºê¶¨Òå,¿ÉÒÔÖ§³ÖTIM1~TIM17ÈÎÒâÒ»¸ö¶¨Ê±Æ÷.
- */
- 
-#define GTIM_TIMX_INT                       TIM3
-#define GTIM_TIMX_INT_IRQn                  TIM3_IRQn
-#define GTIM_TIMX_INT_IRQHandler            TIM3_IRQHandler
-#define GTIM_TIMX_INT_CLK_ENABLE()          do{ __HAL_RCC_TIM3_CLK_ENABLE(); }while(0)  /* TIM3 Ê±ÖÓÊ¹ÄÜ */
-
-/* TIMX PWMÊä³ö¶¨Òå 
- * ÕâÀïÊä³öµÄPWM¿ØÖÆLED0(RED)µÄÁÁ¶È
- * Ä¬ÈÏÊÇÕë¶ÔTIM2~TIM5
- * ×¢Òâ: Í¨¹ıĞŞ¸ÄÕâ¼¸¸öºê¶¨Òå,¿ÉÒÔÖ§³ÖTIM1~TIM8ÈÎÒâÒ»¸ö¶¨Ê±Æ÷,ÈÎÒâÒ»¸öIO¿ÚÊä³öPWM
- */
-#define GTIM_TIMX_PWM_CHY_GPIO_PORT         GPIOB
-#define GTIM_TIMX_PWM_CHY_GPIO_PIN          GPIO_PIN_5
-#define GTIM_TIMX_PWM_CHY_GPIO_CLK_ENABLE() do{ __HAL_RCC_GPIOB_CLK_ENABLE(); }while(0)   /* PB¿ÚÊ±ÖÓÊ¹ÄÜ */
-
-/* TIMX REMAPÉèÖÃ
- * ÒòÎªÎÒÃÇLED0½ÓÔÚPB5ÉÏ, ±ØĞëÍ¨¹ı¿ªÆôTIM3µÄ²¿·ÖÖØÓ³Éä¹¦ÄÜ, ²ÅÄÜ½«TIM3_CH2Êä³öµ½PB5ÉÏ
- * Òò´Ë, ±ØĞëÊµÏÖGTIM_TIMX_PWM_CHY_GPIO_REMAP
- * ¶ÔÄÇĞ©Ê¹ÓÃÄ¬ÈÏÉèÖÃµÄ¶¨Ê±Æ÷PWMÊä³ö½Å, ²»ÓÃÉèÖÃÖØÓ³Éä, ÊÇ²»ĞèÒª¸Ãº¯ÊıµÄ!
- */
-#define GTIM_TIMX_PWM_CHY_GPIO_REMAP()      do{__HAL_RCC_AFIO_CLK_ENABLE();\
-                                                __HAL_AFIO_REMAP_TIM3_PARTIAL();\
-                                            }while(0)            /* Í¨µÀREMAPÉèÖÃ, ¸Ãº¯Êı²»ÊÇ±ØĞëµÄ, ¸ù¾İĞèÒªÊµÏÖ */
-
-#define GTIM_TIMX_PWM                       TIM3 
-#define GTIM_TIMX_PWM_CHY                   TIM_CHANNEL_2                           /* Í¨µÀY,  1<= Y <=4 */
-#define GTIM_TIMX_PWM_CHY_CCRX              TIM3->CCR2                              /* Í¨µÀYµÄÊä³ö±È½Ï¼Ä´æÆ÷ */
-#define GTIM_TIMX_PWM_CHY_CLK_ENABLE()      do{ __HAL_RCC_TIM3_CLK_ENABLE(); }while(0)   /* TIM3 Ê±ÖÓÊ¹ÄÜ */
-
- /* TIMX ÊäÈë²¶»ñ¶¨Òå 
- * ÕâÀïµÄÊäÈë²¶»ñÊ¹ÓÃ¶¨Ê±Æ÷TIM2_CH1,²¶»ñWK_UP°´¼üµÄÊäÈë
- * Ä¬ÈÏÊÇÕë¶ÔTIM2~TIM5. 
- * ×¢Òâ: Í¨¹ıĞŞ¸ÄÕâ¼¸¸öºê¶¨Òå,¿ÉÒÔÖ§³ÖTIM1~TIM8ÈÎÒâÒ»¸ö¶¨Ê±Æ÷,ÈÎÒâÒ»¸öIO¿Ú×öÊäÈë²¶»ñ
- *       ÌØ±ğÒª×¢Òâ:Ä¬ÈÏÓÃµÄPA0,ÉèÖÃµÄÊÇÏÂÀ­ÊäÈë!Èç¹û¸ÄÆäËûIO,¶ÔÓ¦µÄÉÏÏÂÀ­·½Ê½Ò²µÃ¸Ä!
- */
-#define GTIM_TIMX_CAP_CHY_GPIO_PORT            GPIOA
-#define GTIM_TIMX_CAP_CHY_GPIO_PIN             GPIO_PIN_0
-#define GTIM_TIMX_CAP_CHY_GPIO_CLK_ENABLE()    do{ __HAL_RCC_GPIOA_CLK_ENABLE(); }while(0)   /* PA¿ÚÊ±ÖÓÊ¹ÄÜ */
-
-#define GTIM_TIMX_CAP                          TIM5                       
-#define GTIM_TIMX_CAP_IRQn                     TIM5_IRQn
-#define GTIM_TIMX_CAP_IRQHandler               TIM5_IRQHandler
-#define GTIM_TIMX_CAP_CHY                      TIM_CHANNEL_1                        /* Í¨µÀY,  1<= Y <=4 */
-#define GTIM_TIMX_CAP_CHY_CCRX                 TIM5->CCR1               /* Í¨µÀYµÄÊä³ö±È½Ï¼Ä´æÆ÷ */
-#define GTIM_TIMX_CAP_CHY_CLK_ENABLE()         do{ __HAL_RCC_TIM5_CLK_ENABLE(); }while(0)    /* TIM5 Ê±ÖÓÊ¹ÄÜ */
-
-
-/* TIMX ÊäÈë¼ÆÊı¶¨Òå
-* ÕâÀïµÄÊäÈë¼ÆÊıÊ¹ÓÃ¶¨Ê±Æ÷TIM2_CH1,²¶»ñWK_UP°´¼üµÄÊäÈë
-* Ä¬ÈÏÊÇÕë¶ÔTIM2~TIM5, Ö»ÓĞCH1ºÍCH2Í¨µÀ¿ÉÒÔÓÃ×öÊäÈë¼ÆÊı, CH3/CH4²»Ö§³Ö!
-* ×¢Òâ: Í¨¹ıĞŞ¸ÄÕâ¼¸¸öºê¶¨Òå,¿ÉÒÔÖ§³ÖTIM1~TIM8ÈÎÒâÒ»¸ö¶¨Ê±Æ÷,CH1/CH2¶ÔÓ¦IO¿Ú×öÊäÈë¼ÆÊı
-*       ÌØ±ğÒª×¢Òâ:Ä¬ÈÏÓÃµÄPA0,ÉèÖÃµÄÊÇÏÂÀ­ÊäÈë!Èç¹û¸ÄÆäËûIO,¶ÔÓ¦µÄÉÏÏÂÀ­·½Ê½Ò²µÃ¸Ä!
-*/
-#define GTIM_TIMX_CNT_CHY_GPIO_PORT            GPIOA
-#define GTIM_TIMX_CNT_CHY_GPIO_PIN             GPIO_PIN_0
-#define GTIM_TIMX_CNT_CHY_GPIO_CLK_ENABLE()    do{ __HAL_RCC_GPIOA_CLK_ENABLE(); }while(0)   /* PA¿ÚÊ±ÖÓÊ¹ÄÜ */
-
-#define GTIM_TIMX_CNT                          TIM2
-#define GTIM_TIMX_CNT_IRQn                     TIM2_IRQn
-#define GTIM_TIMX_CNT_IRQHandler               TIM2_IRQHandler
-#define GTIM_TIMX_CNT_CHY                      1                            /* Í¨µÀY,  1<= Y <=2 */
-#define GTIM_TIMX_CNT_CHY_CLK_ENABLE()         do{ __HAL_RCC_TIM2_CLK_ENABLE(); }while(0)    /* TIM2 Ê±ÖÓÊ¹ÄÜ */
-
-/******************************************************************************************/
-
-void gtim_timx_int_init(uint16_t arr, uint16_t psc);        /* Í¨ÓÃ¶¨Ê±Æ÷ ¶¨Ê±ÖĞ¶Ï³õÊ¼»¯º¯Êı */
-void gtim_timx_pwm_chy_init(uint16_t arr, uint16_t psc);    /* Í¨ÓÃ¶¨Ê±Æ÷ PWM³õÊ¼»¯º¯Êı */
-void gtim_timx_cap_chy_init(uint16_t arr, uint16_t psc);    /* Í¨ÓÃ¶¨Ê±Æ÷ ÊäÈë²¶»ñ³õÊ¼»¯º¯Êı */
-void gtim_timx_cnt_chy_init(uint16_t psc);                  /* Í¨ÓÃ¶¨Ê±Æ÷ Âö³å¼ÆÊı³õÊ¼»¯º¯Êı */
-uint32_t gtim_timx_cnt_chy_get_count(void);                 /* Í¨ÓÃ¶¨Ê±Æ÷ »ñÈ¡Âö³å¼ÆÊı */
-void gtim_timx_cnt_chy_restart(void);                       /* Í¨ÓÃ¶¨Ê±Æ÷ ÖØÆô¼ÆÊıÆ÷ */
-
-#endif
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+#endif /* __GTIM_H__ */

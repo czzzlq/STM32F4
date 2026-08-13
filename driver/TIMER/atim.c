@@ -1,317 +1,129 @@
 /**
- ****************************************************************************************************
- * @file        atim.h
- * @author      ÕıµãÔ­×ÓÍÅ¶Ó(ALIENTEK)
- * @version     V1.2
- * @date        2020-04-21
- * @brief       ¸ß¼¶¶¨Ê±Æ÷ Çı¶¯´úÂë
- * @license     Copyright (c) 2020-2032, ¹ãÖİÊĞĞÇÒíµç×Ó¿Æ¼¼ÓĞÏŞ¹«Ë¾
- ****************************************************************************************************
- * @attention
- *
- * ÊµÑéÆ½Ì¨:ÕıµãÔ­×Ó STM32F103¿ª·¢°å
- * ÔÚÏßÊÓÆµ:www.yuanzige.com
- * ¼¼ÊõÂÛÌ³:www.openedv.com
- * ¹«Ë¾ÍøÖ·:www.alientek.com
- * ¹ºÂòµØÖ·:openedv.taobao.com
- *
- * ĞŞ¸ÄËµÃ÷
- * V1.0 20200421
- * µÚÒ»´Î·¢²¼
- * V1.1 20200421
- * 1, ĞÂÔöatim_timx_comp_pwm_initº¯Êı, ÊµÏÖÊä³ö±È½ÏÄ£Ê½PWMÊä³ö¹¦ÄÜ
- * V1.2 20200421
- * 1, Ôö¼Óatim_timx_cplm_pwm_initº¯Êı
- * 2, Ôö¼Óatim_timx_cplm_pwm_setº¯Êı
- *
- ****************************************************************************************************
+ * @file    atim.c
+ * @brief   é«˜çº§å®šæ—¶å™¨é©±åŠ¨ï¼ˆè¾“å‡ºæ¯”è¾ƒ PWM / äº’è¡¥ PWM / PWM è¾“å…¥æµ‹é‡ï¼‰
+ * @note    1. ç¡¬ä»¶é…ç½®è§ bsp/bsp_timer.h
+ *          2. TIM1/TIM8 çš„æ›´æ–°ä¸­æ–­ä¸æ•è·æ¯”è¾ƒä¸­æ–­ç›¸äº’ç‹¬ç«‹
  */
+#include "atim.h"
 
-#include "./BSP/TIMER/atim.h"
-#include "./BSP/LED/led.h"
+/* è¾“å‡ºæ¯”è¾ƒæ¨¡å¼å¥æŸ„ */
+static TIM_HandleTypeDef g_atimx_comp_pwm_handle;
 
-/******************************************************************************************/
-/* ¶¨Ê±Æ÷ÅäÖÃ¾ä±ú ¶¨Òå */
+/* äº’è¡¥ PWM å¥æŸ„ä¸æ­»åŒºé…ç½® */
+static TIM_HandleTypeDef g_atimx_cplm_pwm_handle;
+static TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig = {0};
 
-/*¸ß¼¶¶¨Ê±Æ÷PWM*/
-//static TIM_HandleTypeDef g_atimx_pwm_chy_handle;     /* ¶¨Ê±Æ÷x¾ä±ú */
-//static TIM_OC_InitTypeDef g_atimx_oc_pwm_chy_handle; /* ¶¨Ê±Æ÷Êä³ö¾ä±ú */
+/* PWM è¾“å…¥æµ‹é‡çŠ¶æ€
+ * g_atimxchy_pwmin_sta : 0 æœªæˆåŠŸæµ‹é‡ï¼›1 æµ‹é‡æˆåŠŸ */
+uint8_t  g_atimxchy_pwmin_sta  = 0;
+uint16_t g_atimxchy_pwmin_psc  = 0;     /* PWM è¾“å…¥é¢„åˆ†é¢‘ç³»æ•° */
+uint32_t g_atimxchy_pwmin_hval = 0;     /* PWM é«˜ç”µå¹³æ—¶é—´ */
+uint32_t g_atimxchy_pwmin_cval = 0;     /* PWM å‘¨æœŸ */
 
-/* g_npwm_remain±íÊ¾µ±Ç°»¹Ê£ÏÂ¶àÉÙ¸öÂö³åÒª·¢ËÍ
- * Ã¿´Î×î¶à·¢ËÍ256¸öÂö³å
- */
-//static uint32_t g_npwm_remain = 0;
+static TIM_HandleTypeDef g_timx_pwmin_chy_handle;
 
-/*¸ß¼¶¶¨Ê±Æ÷Êä³ö±È½ÏÄ£Ê½*/
-static TIM_HandleTypeDef g_atimx_comp_pwm_handle;                              /* ¶¨Ê±Æ÷x¾ä±ú */
-
-/*»¥²¹Êä³ö´øËÀÇø¿ØÖÆ*/
-static TIM_HandleTypeDef g_atimx_cplm_pwm_handle;                              /* ¶¨Ê±Æ÷x¾ä±ú */
-static TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig = {0};             /* ËÀÇøÊ±¼äÉèÖÃ */
-
-/* PWMÊäÈë×´Ì¬(g_timxchy_cap_sta)
- * 0,Ã»ÓĞ³É¹¦²¶»ñ.
- * 1,ÒÑ¾­³É¹¦²¶»ñÁË
- */
-uint8_t g_atimxchy_pwmin_sta  = 0;   /* PWMÊäÈë×´Ì¬ */
-uint16_t g_atimxchy_pwmin_psc  = 0;  /* PWMÊäÈë·ÖÆµÏµÊı */
-uint32_t g_atimxchy_pwmin_hval = 0;  /* PWMµÄ¸ßµçÆ½Âö¿í */
-uint32_t g_atimxchy_pwmin_cval = 0;  /* PWMµÄÖÜÆÚ¿í¶È */
-static TIM_HandleTypeDef g_timx_pwmin_chy_handle;                              /* ¶¨Ê±Æ÷x¾ä±ú */
-
-
-/******************************************************************************************/
-/* HAL Í¨ÓÃ»Øµ÷½Ó¿Úº¯Êı */
-
-///**
-// * @brief       ¸ß¼¶¶¨Ê±Æ÷TIMX NPWMÖĞ¶Ï·şÎñº¯Êı
-// * @param       ÎŞ
-// * @retval      ÎŞ
-// */
-//void ATIM_TIMX_NPWM_IRQHandler(void)
-//{
-//    HAL_TIM_IRQHandler(&g_atimx_pwm_chy_handle); /* ¶¨Ê±Æ÷¹²ÓÃ´¦Àíº¯Êı */
-//}
-
-///**
-// * @brief       ¶¨Ê±Æ÷¸üĞÂÖĞ¶Ï»Øµ÷º¯Êı
-// * @param        htim:¶¨Ê±Æ÷¾ä±úÖ¸Õë
-// * @note        ´Ëº¯Êı»á±»¶¨Ê±Æ÷ÖĞ¶Ïº¯Êı¹²Í¬µ÷ÓÃµÄ
-// * @retval      ÎŞ
-// */
-////void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
-////{
-////    uint16_t npwm = 0;
-
-////    if (htim == (&g_atimx_pwm_chy_handle)) /* ¸ß¼¶¶¨Ê±Æ÷ÖĞ¶ÏÊµÑé»Øµ÷Ö´ĞĞµÄÄÚÈİ */
-////    {
-////        if (g_npwm_remain > 256) /* »¹ÓĞ´óÓÚ256¸öÂö³åĞèÒª·¢ËÍ */
-////        {
-////            g_npwm_remain = g_npwm_remain - 256;
-////            npwm = 256;
-////        }
-////        else if (g_npwm_remain % 256) /* »¹ÓĞÎ»Êı£¨²»µ½256£©¸öÂö³åÒª·¢ËÍ */
-////        {
-////            npwm = g_npwm_remain % 256;
-////            g_npwm_remain = 0; /* Ã»ÓĞÂö³åÁË */
-////        }
-
-////        if (npwm) /* ÓĞÂö³åÒª·¢ËÍ */
-////        {
-////            g_atimx_pwm_chy_handle.Instance->RCR = npwm - 1;                        /* ÉèÖÃÖØ¸´¼ÆÊı¼Ä´æÆ÷ÖµÎªnpwm-1, ¼´npwm¸öÂö³å */
-////            HAL_TIM_GenerateEvent(&g_atimx_pwm_chy_handle, TIM_EVENTSOURCE_UPDATE); /* ²úÉúÒ»´Î¸üĞÂÊÂ¼ş,ÔÚÖĞ¶ÏÀïÃæ´¦ÀíÂö³åÊä³ö */
-////            __HAL_TIM_ENABLE(&g_atimx_pwm_chy_handle);                              /* Ê¹ÄÜ¶¨Ê±Æ÷TIMX */
-////        }
-////        else
-////        {
-////            g_atimx_pwm_chy_handle.Instance->CR1 &= ~(1 << 0); /* ¹Ø±Õ¶¨Ê±Æ÷TIMX£¬Ê¹ÓÃHAL Disable»áÇå³ıPWMÍ¨µÀĞÅÏ¢£¬´Ë´¦²»ÓÃ */
-////        }
-////    }
-////}
-
-///**
-// * @brief       ¸ß¼¶¶¨Ê±Æ÷TIMX Í¨µÀY Êä³öÖ¸¶¨¸öÊıPWM ³õÊ¼»¯º¯Êı
-// * @note
-// *              ¸ß¼¶¶¨Ê±Æ÷µÄÊ±ÖÓÀ´×ÔAPB2, ¶øPCLK2 = 72Mhz, ÎÒÃÇÉèÖÃPPRE2²»·ÖÆµ, Òò´Ë
-// *              ¸ß¼¶¶¨Ê±Æ÷Ê±ÖÓ = 72Mhz
-// *              ¶¨Ê±Æ÷Òç³öÊ±¼ä¼ÆËã·½·¨: Tout = ((arr + 1) * (psc + 1)) / Ft us.
-// *              Ft=¶¨Ê±Æ÷¹¤×÷ÆµÂÊ,µ¥Î»:Mhz
-// *
-// * @param       arr: ×Ô¶¯ÖØ×°Öµ
-// * @param       psc: Ê±ÖÓÔ¤·ÖÆµÊı
-// * @retval      ÎŞ
-// */
-//void atim_timx_npwm_chy_init(uint16_t arr, uint16_t psc)
-//{
-//    ATIM_TIMX_NPWM_CHY_GPIO_CLK_ENABLE(); /* TIMX Í¨µÀIO¿ÚÊ±ÖÓÊ¹ÄÜ */
-//    ATIM_TIMX_NPWM_CHY_CLK_ENABLE();       /* TIMX Ê±ÖÓÊ¹ÄÜ */
-
-//    g_atimx_pwm_chy_handle.Instance = ATIM_TIMX_NPWM;                  /* ¶¨Ê±Æ÷x */
-//    g_atimx_pwm_chy_handle.Init.Prescaler = psc;                       /* ¶¨Ê±Æ÷·ÖÆµ */
-//    g_atimx_pwm_chy_handle.Init.CounterMode = TIM_COUNTERMODE_DOWN;    /*ÏòÏÂ¼ÆÊıÄ£Ê½*/
-//    g_atimx_pwm_chy_handle.Init.Period = arr;                          /* ×Ô¶¯ÖØ×°ÔØÖµ */
-//    g_atimx_pwm_chy_handle.Init.ClockDivision=TIM_CLOCKDIVISION_DIV1;  /*·ÖÆµÒò×Ó*/
-//    g_atimx_pwm_chy_handle.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE; /*Ê¹ÄÜTIMx_ARR½øĞĞ»º³å*/
-//    g_atimx_pwm_chy_handle.Init.RepetitionCounter = 0;                  /* ¿ªÊ¼Ê±²»¼ÆÊı*/
-//    HAL_TIM_PWM_Init(&g_atimx_pwm_chy_handle);                          /* ³õÊ¼»¯PWM */
-
-//    g_atimx_oc_pwm_chy_handle.OCMode = TIM_OCMODE_PWM1;                 /*Ä£Ê½Ñ¡ÔñPWM1*/
-//    g_atimx_oc_pwm_chy_handle.Pulse = arr/2;
-//    g_atimx_oc_pwm_chy_handle.OCPolarity = TIM_OCPOLARITY_LOW;          /*Êä³ö±È½Ï¼«ĞÔÎªµÍ*/
-//    HAL_TIM_PWM_ConfigChannel(&g_atimx_pwm_chy_handle, &g_atimx_oc_pwm_chy_handle, ATIM_TIMX_NPWM_CHY); /* ÅäÖÃTIMxÍ¨µÀy */
-//    HAL_TIM_PWM_Start(&g_atimx_pwm_chy_handle, ATIM_TIMX_NPWM_CHY);     /*¿ªÆô¶ÔÓ¦PWMÍ¨µÀ*/
-//    __HAL_TIM_ENABLE_IT(&g_atimx_pwm_chy_handle, TIM_IT_UPDATE);        /*ÔÊĞí¸üĞÂÖĞ¶Ï */
-
-//    HAL_NVIC_SetPriority(ATIM_TIMX_NPWM_IRQn, 1, 3); /* ÉèÖÃÖĞ¶ÏÓÅÏÈ¼¶£¬ÇÀÕ¼ÓÅÏÈ¼¶1£¬×ÓÓÅÏÈ¼¶3 */
-//    HAL_NVIC_EnableIRQ(ATIM_TIMX_NPWM_IRQn);         /* ¿ªÆôITMxÖĞ¶Ï */
-//}
-
-///**
-// * @brief       ¶¨Ê±Æ÷µ×²ãÇı¶¯£¬Ê±ÖÓÊ¹ÄÜ£¬Òı½ÅÅäÖÃ
-//                ´Ëº¯Êı»á±»HAL_TIM_PWM_Init()µ÷ÓÃ
-// * @param       htim:¶¨Ê±Æ÷¾ä±ú
-// * @retval      ÎŞ
-// */
-////void HAL_TIM_PWM_MspInit(TIM_HandleTypeDef *htim)
-////{
-////    if (htim->Instance == ATIM_TIMX_NPWM)
-////    {
-////        GPIO_InitTypeDef gpio_init_struct;
-////        ATIM_TIMX_NPWM_CHY_GPIO_CLK_ENABLE(); /* ¿ªÆôÍ¨µÀyµÄCPIOÊ±ÖÓ */
-////        ATIM_TIMX_NPWM_CHY_CLK_ENABLE();
-
-////        gpio_init_struct.Pin = ATIM_TIMX_NPWM_CHY_GPIO_PIN; /* Í¨µÀyµÄCPIO¿Ú */
-////        gpio_init_struct.Mode = GPIO_MODE_AF_PP;            /* ¸´ÓÃÍÆÍêÊä³ö */
-////        gpio_init_struct.Pull = GPIO_PULLUP;                /* ÉÏÀ­ */
-////        gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;      /* ¸ßËÙ */
-////        HAL_GPIO_Init(ATIM_TIMX_NPWM_CHY_GPIO_PORT, &gpio_init_struct);
-////    }
-////}
-
-///**
-// * @brief       ¸ß¼¶¶¨Ê±Æ÷TIMX NPWMÉèÖÃPWM¸öÊı
-// * @param       rcr: PWMµÄ¸öÊı, 1~2^32´Î·½¸ö
-// * @retval      ÎŞ
-// */
-//void atim_timx_npwm_chy_set(uint32_t npwm)
-//{
-//    if (npwm == 0)
-//        return;
-
-//    g_npwm_remain = npwm;                                                  /* ±£´æÂö³å¸öÊı */
-//    HAL_TIM_GenerateEvent(&g_atimx_pwm_chy_handle, TIM_EVENTSOURCE_UPDATE); /* ²úÉúÒ»´Î¸üĞÂÊÂ¼ş,ÔÚÖĞ¶ÏÀïÃæ´¦ÀíÂö³åÊä³ö */
-//    __HAL_TIM_ENABLE(&g_atimx_pwm_chy_handle);                              /* Ê¹ÄÜ¶¨Ê±Æ÷TIMX */
-//}
+/* ==================== è¾“å‡ºæ¯”è¾ƒæ¨¡å¼ 4 è·¯ PWM ==================== */
 
 /**
- * @brief       ¸ß¼¶¶¨Ê±Æ÷TIMX Êä³ö±È½ÏÄ£Ê½ ³õÊ¼»¯º¯Êı£¨Ê¹ÓÃÊä³ö±È½ÏÄ£Ê½£©
- * @note
- *              ÅäÖÃ¸ß¼¶¶¨Ê±Æ÷TIMX 4Â·Êä³ö±È½ÏÄ£Ê½PWMÊä³ö,ÊµÏÖ50%Õ¼¿Õ±È,²»Í¬ÏàÎ»¿ØÖÆ
- *              ×¢Òâ,±¾Àı³ÌÊä³ö±È½ÏÄ£Ê½,Ã¿2¸ö¼ÆÊıÖÜÆÚ²ÅÄÜÍê³ÉÒ»¸öPWMÊä³ö,Òò´ËÊä³öÆµÂÊ¼õ°ë
- *              ÁíÍâ,ÎÒÃÇ»¹¿ÉÒÔ¿ªÆôÖĞ¶ÏÔÚÖĞ¶ÏÀïÃæĞŞ¸ÄCCRx,´Ó¶øÊµÏÖ²»Í¬ÆµÂÊ/²»Í¬ÏàÎ»µÄ¿ØÖÆ
- *              µ«ÊÇÎÒÃÇ²»ÍÆ¼öÕâÃ´Ê¹ÓÃ,ÒòÎªÕâ¿ÉÄÜµ¼ÖÂ·Ç³£Æµ·±µÄÖĞ¶Ï,´Ó¶øÕ¼ÓÃ´óÁ¿CPU×ÊÔ´
- *
- *              ¸ß¼¶¶¨Ê±Æ÷µÄÊ±ÖÓÀ´×ÔAPB2, ¶øPCLK2 = 72Mhz, ÎÒÃÇÉèÖÃPPRE2²»·ÖÆµ, Òò´Ë
- *              ¸ß¼¶¶¨Ê±Æ÷Ê±ÖÓ = 72Mhz
- *              ¶¨Ê±Æ÷Òç³öÊ±¼ä¼ÆËã·½·¨: Tout = ((arr + 1) * (psc + 1)) / Ft us.
- *              Ft=¶¨Ê±Æ÷¹¤×÷ÆµÂÊ,µ¥Î»:Mhz
- *
- * @param       arr: ×Ô¶¯ÖØ×°Öµ¡£
- * @param       psc: Ê±ÖÓÔ¤·ÖÆµÊı
- * @retval      ÎŞ
+ * @brief   é«˜çº§å®šæ—¶å™¨è¾“å‡ºæ¯”è¾ƒæ¨¡å¼ 4 è·¯ PWM åˆå§‹åŒ–
+ * @param   arr : è‡ªåŠ¨é‡è£…å€¼
+ * @param   psc : æ—¶é’Ÿé¢„åˆ†é¢‘æ•°
+ * @note    è¾“å‡ºæ¯”è¾ƒç¿»è½¬æ¨¡å¼ï¼Œ4 è·¯ 50% å ç©ºæ¯”ï¼Œæ¯”è¾ƒå€¼ 250/500/750/1000
+ *          å®ç°æ¯è·¯ 25% ç›¸ä½å·®ï¼›ä¿®æ”¹ CCRx å¯è°ƒç›¸ä½
  */
 void atim_timx_comp_pwm_init(uint16_t arr, uint16_t psc)
 {
     TIM_OC_InitTypeDef sConfigOC = {0};
+    GPIO_InitTypeDef gpio_init_struct = {0};
 
-    g_atimx_comp_pwm_handle.Instance = ATIM_TIMX_COMP;                  /* ¶¨Ê±Æ÷8 */
-    g_atimx_comp_pwm_handle.Init.Prescaler = psc  ;                     /* ¶¨Ê±Æ÷·ÖÆµ */
-    g_atimx_comp_pwm_handle.Init.CounterMode = TIM_COUNTERMODE_UP;      /*ÏòÉÏ¼ÆÊıÄ£Ê½*/
-    g_atimx_comp_pwm_handle.Init.Period = arr;                          /*×Ô¶¯ÖØ×°ÔØÖµ*/
-    g_atimx_comp_pwm_handle.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;/*²»·ÖÆµ*/
-    g_atimx_comp_pwm_handle.Init.RepetitionCounter = 0;                 /*ÖØ¸´¼ÆÊıÆ÷¼Ä´æÆ÷Îª0*/
-    g_atimx_comp_pwm_handle.Init.AutoReloadPreload =   TIM_AUTORELOAD_PRELOAD_ENABLE;        /*²»Ê¹ÄÜÓ°×Ó¼Ä´æÆ÷TIMx_ARR*/
-    HAL_TIM_OC_Init(&g_atimx_comp_pwm_handle);    /* Êä³ö±È½ÏÄ£Ê½³õÊ¼»¯ */
+    ATIM_TIMX_COMP_CLK_ENABLE();
+    ATIM_TIMX_COMP_CH1_GPIO_CLK_ENABLE();
+    ATIM_TIMX_COMP_CH2_GPIO_CLK_ENABLE();
+    ATIM_TIMX_COMP_CH3_GPIO_CLK_ENABLE();
+    ATIM_TIMX_COMP_CH4_GPIO_CLK_ENABLE();
 
-    sConfigOC.OCMode = TIM_OCMODE_TOGGLE;         /* ±È½ÏÊä³öÄ£Ê½ */
-    sConfigOC.Pulse = 250;                        /* ÉèÖÃÊä³ö±È½Ï¼Ä´æÆ÷µÄÖµ */
-    sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;   /* Êä³ö±È½Ï¼«ĞÔÎª¸ß */
-    HAL_TIM_OC_ConfigChannel(&g_atimx_comp_pwm_handle, &sConfigOC,  TIM_CHANNEL_1);  /* ³õÊ¼»¯¶¨Ê±Æ÷µÄÊä³ö±È½ÏÍ¨µÀ1 */
-    __HAL_TIM_ENABLE_OCxPRELOAD(&g_atimx_comp_pwm_handle, TIM_CHANNEL_1);            /* Í¨µÀ1 Ô¤×°ÔØÊ¹ÄÜ */
+    /* TIM8 CH1~CH4 é»˜è®¤æ˜ å°„ PC6/PC7/PC8/PC9ï¼Œæ— éœ€é‡æ˜ å°„ */
+    gpio_init_struct.Mode = GPIO_MODE_AF_PP;
+    gpio_init_struct.Pull = GPIO_NOPULL;
+    gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;
+
+    gpio_init_struct.Pin = ATIM_TIMX_COMP_CH1_GPIO_PIN;
+    HAL_GPIO_Init(ATIM_TIMX_COMP_CH1_GPIO_PORT, &gpio_init_struct);
+
+    gpio_init_struct.Pin = ATIM_TIMX_COMP_CH2_GPIO_PIN;
+    HAL_GPIO_Init(ATIM_TIMX_COMP_CH2_GPIO_PORT, &gpio_init_struct);
+
+    gpio_init_struct.Pin = ATIM_TIMX_COMP_CH3_GPIO_PIN;
+    HAL_GPIO_Init(ATIM_TIMX_COMP_CH3_GPIO_PORT, &gpio_init_struct);
+
+    gpio_init_struct.Pin = ATIM_TIMX_COMP_CH4_GPIO_PIN;
+    HAL_GPIO_Init(ATIM_TIMX_COMP_CH4_GPIO_PORT, &gpio_init_struct);
+
+    g_atimx_comp_pwm_handle.Instance = ATIM_TIMX_COMP;
+    g_atimx_comp_pwm_handle.Init.Prescaler = psc;
+    g_atimx_comp_pwm_handle.Init.CounterMode = TIM_COUNTERMODE_UP;
+    g_atimx_comp_pwm_handle.Init.Period = arr;
+    g_atimx_comp_pwm_handle.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+    g_atimx_comp_pwm_handle.Init.RepetitionCounter = 0;
+    g_atimx_comp_pwm_handle.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+    HAL_TIM_OC_Init(&g_atimx_comp_pwm_handle);
+
+    sConfigOC.OCMode = TIM_OCMODE_TOGGLE;
+    sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+
+    sConfigOC.Pulse = 250;
+    HAL_TIM_OC_ConfigChannel(&g_atimx_comp_pwm_handle, &sConfigOC, TIM_CHANNEL_1);
+    __HAL_TIM_ENABLE_OCxPRELOAD(&g_atimx_comp_pwm_handle, TIM_CHANNEL_1);
 
     sConfigOC.Pulse = 500;
-    HAL_TIM_OC_ConfigChannel(&g_atimx_comp_pwm_handle, &sConfigOC, TIM_CHANNEL_2);  /* ³õÊ¼»¯¶¨Ê±Æ÷µÄÊä³ö±È½ÏÍ¨µÀ2 */
-    __HAL_TIM_ENABLE_OCxPRELOAD(&g_atimx_comp_pwm_handle, TIM_CHANNEL_2);           /* Í¨µÀ2 Ô¤×°ÔØÊ¹ÄÜ */
+    HAL_TIM_OC_ConfigChannel(&g_atimx_comp_pwm_handle, &sConfigOC, TIM_CHANNEL_2);
+    __HAL_TIM_ENABLE_OCxPRELOAD(&g_atimx_comp_pwm_handle, TIM_CHANNEL_2);
 
     sConfigOC.Pulse = 750;
-    HAL_TIM_OC_ConfigChannel(&g_atimx_comp_pwm_handle, &sConfigOC,  TIM_CHANNEL_3);  /* ³õÊ¼»¯¶¨Ê±Æ÷µÄÊä³ö±È½ÏÍ¨µÀ3 */
-    __HAL_TIM_ENABLE_OCxPRELOAD(&g_atimx_comp_pwm_handle, TIM_CHANNEL_3);            /* Í¨µÀ3 Ô¤×°ÔØÊ¹ÄÜ */
+    HAL_TIM_OC_ConfigChannel(&g_atimx_comp_pwm_handle, &sConfigOC, TIM_CHANNEL_3);
+    __HAL_TIM_ENABLE_OCxPRELOAD(&g_atimx_comp_pwm_handle, TIM_CHANNEL_3);
 
     sConfigOC.Pulse = 1000;
     sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
-    HAL_TIM_OC_ConfigChannel(&g_atimx_comp_pwm_handle, &sConfigOC,  TIM_CHANNEL_4);  /* ³õÊ¼»¯¶¨Ê±Æ÷µÄÊä³ö±È½ÏÍ¨µÀ4 */
-    __HAL_TIM_ENABLE_OCxPRELOAD(&g_atimx_comp_pwm_handle, TIM_CHANNEL_4);            /* Í¨µÀ4 Ô¤×°ÔØÊ¹ÄÜ */
+    HAL_TIM_OC_ConfigChannel(&g_atimx_comp_pwm_handle, &sConfigOC, TIM_CHANNEL_4);
+    __HAL_TIM_ENABLE_OCxPRELOAD(&g_atimx_comp_pwm_handle, TIM_CHANNEL_4);
 
-    HAL_TIM_OC_Start(&g_atimx_comp_pwm_handle,TIM_CHANNEL_1);
-    HAL_TIM_OC_Start(&g_atimx_comp_pwm_handle,TIM_CHANNEL_2);
-    HAL_TIM_OC_Start(&g_atimx_comp_pwm_handle,TIM_CHANNEL_3);
-    HAL_TIM_OC_Start(&g_atimx_comp_pwm_handle,TIM_CHANNEL_4);
+    HAL_TIM_OC_Start(&g_atimx_comp_pwm_handle, TIM_CHANNEL_1);
+    HAL_TIM_OC_Start(&g_atimx_comp_pwm_handle, TIM_CHANNEL_2);
+    HAL_TIM_OC_Start(&g_atimx_comp_pwm_handle, TIM_CHANNEL_3);
+    HAL_TIM_OC_Start(&g_atimx_comp_pwm_handle, TIM_CHANNEL_4);
 }
 
-/**
- * @brief       ¶¨Ê±Æ÷µ×²ãÇı¶¯£¬Ê±ÖÓÊ¹ÄÜ£¬Òı½ÅÅäÖÃ
-                ´Ëº¯Êı»á±»HAL_TIM_OC_Init()µ÷ÓÃ
- * @param       htim:¶¨Ê±Æ÷¾ä±ú
- * @retval      ÎŞ
- */
-void HAL_TIM_OC_MspInit(TIM_HandleTypeDef *htim)
-{
-    if (htim->Instance == ATIM_TIMX_COMP)
-    {
-        ATIM_TIMX_COMP_CLK_ENABLE();            /* Ê¹ÄÜ¶¨Ê±Æ÷Ê±ÖÓ */
-        GPIO_InitTypeDef gpio_init_struct;
-        ATIM_TIMX_COMP_CH1_GPIO_CLK_ENABLE();
-        ATIM_TIMX_COMP_CH2_GPIO_CLK_ENABLE();
-        ATIM_TIMX_COMP_CH3_GPIO_CLK_ENABLE();
-        ATIM_TIMX_COMP_CH4_GPIO_CLK_ENABLE();
-        AFIO_REMAP_PARTIAL(AFIO_MAPR_TIM3_REMAP_PARTIALREMAP,AFIO_MAPR_TIM3_REMAP_FULLREMAP);  /*ÕâÀïºÍTIM3Ã»¹ØÏµ£¬¸´ÓÃPC6~PC9ÎªCH1/CH2/CH3/CH4*/      
-
-        gpio_init_struct.Pin = ATIM_TIMX_COMP_CH1_GPIO_PIN;
-        gpio_init_struct.Mode = GPIO_MODE_AF_PP;
-        gpio_init_struct.Pull = GPIO_NOPULL;
-        gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;
-        HAL_GPIO_Init(ATIM_TIMX_COMP_CH1_GPIO_PORT, &gpio_init_struct);
-
-        gpio_init_struct.Pin = ATIM_TIMX_COMP_CH2_GPIO_PIN;
-        HAL_GPIO_Init(ATIM_TIMX_COMP_CH2_GPIO_PORT, &gpio_init_struct);
-
-        gpio_init_struct.Pin = ATIM_TIMX_COMP_CH3_GPIO_PIN;
-        HAL_GPIO_Init(ATIM_TIMX_COMP_CH3_GPIO_PORT, &gpio_init_struct);
-
-        gpio_init_struct.Pin = ATIM_TIMX_COMP_CH4_GPIO_PIN;
-        HAL_GPIO_Init(ATIM_TIMX_COMP_CH4_GPIO_PORT, &gpio_init_struct);
-    }
-}
-
-///*******************************»¥²¹Êä³ö´øËÀÇø¿ØÖÆ³ÌĞò**************************************/
+/* ==================== äº’è¡¥ PWMï¼ˆå«æ­»åŒºï¼‰ ==================== */
 
 /**
- * @brief       ¸ß¼¶¶¨Ê±Æ÷TIMX »¥²¹Êä³ö ³õÊ¼»¯º¯Êı£¨Ê¹ÓÃPWMÄ£Ê½1£©
- * @note
- *              ÅäÖÃ¸ß¼¶¶¨Ê±Æ÷TIMX »¥²¹Êä³ö, Ò»Â·OCy Ò»Â·OCyN, ²¢ÇÒ¿ÉÒÔÉèÖÃËÀÇøÊ±¼ä
- *
- *              ¸ß¼¶¶¨Ê±Æ÷µÄÊ±ÖÓÀ´×ÔAPB2, ¶øPCLK2 = 72Mhz, ÎÒÃÇÉèÖÃPPRE2²»·ÖÆµ, Òò´Ë
- *              ¸ß¼¶¶¨Ê±Æ÷Ê±ÖÓ = 72Mhz
- *              ¶¨Ê±Æ÷Òç³öÊ±¼ä¼ÆËã·½·¨: Tout = ((arr + 1) * (psc + 1)) / Ft us.
- *              Ft=¶¨Ê±Æ÷¹¤×÷ÆµÂÊ,µ¥Î»:Mhz
- *
- * @param       arr: ×Ô¶¯ÖØ×°Öµ¡£
- * @param       psc: Ê±ÖÓÔ¤·ÖÆµÊı
- * @retval      ÎŞ
+ * @brief   é«˜çº§å®šæ—¶å™¨äº’è¡¥ PWM åˆå§‹åŒ–ï¼ˆPWM æ¨¡å¼ 1ï¼Œå«åˆ¹è½¦è¾“å…¥ï¼‰
+ * @param   arr : è‡ªåŠ¨é‡è£…å€¼
+ * @param   psc : æ—¶é’Ÿé¢„åˆ†é¢‘æ•°
  */
-
 void atim_timx_cplm_pwm_init(uint16_t arr, uint16_t psc)
 {
     TIM_OC_InitTypeDef sConfigOC = {0};
-    
     GPIO_InitTypeDef gpio_init_struct = {0};
 
-    ATIM_TIMX_CPLM_CHY_GPIO_CLK_ENABLE();   /* Í¨µÀX¶ÔÓ¦IO¿ÚÊ±ÖÓÊ¹ÄÜ */
-    ATIM_TIMX_CPLM_CHYN_GPIO_CLK_ENABLE();  /* Í¨µÀX»¥²¹Í¨µÀ¶ÔÓ¦IO¿ÚÊ±ÖÓÊ¹ÄÜ */
-    ATIM_TIMX_CPLM_BKIN_GPIO_CLK_ENABLE();  /* Í¨µÀXÉ²³µÊäÈë¶ÔÓ¦IO¿ÚÊ±ÖÓÊ¹ÄÜ */
-  
-    gpio_init_struct.Pin = ATIM_TIMX_CPLM_CHY_GPIO_PIN;
-    gpio_init_struct.Mode = GPIO_MODE_AF_PP; 
+    ATIM_TIMX_CPLM_CHY_GPIO_CLK_ENABLE();
+    ATIM_TIMX_CPLM_CHYN_GPIO_CLK_ENABLE();
+    ATIM_TIMX_CPLM_BKIN_GPIO_CLK_ENABLE();
+
+    gpio_init_struct.Mode = GPIO_MODE_AF_PP;
     gpio_init_struct.Pull = GPIO_PULLUP;
-    gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH ;
+    gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;
+
+    gpio_init_struct.Pin = ATIM_TIMX_CPLM_CHY_GPIO_PIN;
     HAL_GPIO_Init(ATIM_TIMX_CPLM_CHY_GPIO_PORT, &gpio_init_struct);
-  
+
     gpio_init_struct.Pin = ATIM_TIMX_CPLM_CHYN_GPIO_PIN;
     HAL_GPIO_Init(ATIM_TIMX_CPLM_CHYN_GPIO_PORT, &gpio_init_struct);
-  
+
     gpio_init_struct.Pin = ATIM_TIMX_CPLM_BKIN_GPIO_PIN;
     HAL_GPIO_Init(ATIM_TIMX_CPLM_BKIN_GPIO_PORT, &gpio_init_struct);
-    ATIM_TIMX_CPLM_CHYN_GPIO_REMAP();       /* Ó³Éä¶¨Ê±Æ÷IO,PE²»ÊÇ±¾Àı³ÌËùÓÃ¶¨Ê±Æ÷µÄÄ¬ÈÏIO£¬ĞèÒª¸´ÓÃ */
+
+    ATIM_TIMX_CPLM_CHYN_GPIO_REMAP();       /* å®Œå…¨é‡æ˜ å°„åˆ° PE8/PE9/PE15 */
     ATIM_TIMX_CPLM_CLK_ENABLE();
 
     g_atimx_cplm_pwm_handle.Instance = ATIM_TIMX_CPLM;
@@ -321,179 +133,154 @@ void atim_timx_cplm_pwm_init(uint16_t arr, uint16_t psc)
     g_atimx_cplm_pwm_handle.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
     g_atimx_cplm_pwm_handle.Init.RepetitionCounter = 0;
     g_atimx_cplm_pwm_handle.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
-    HAL_TIM_PWM_Init(&g_atimx_cplm_pwm_handle) ;
+    HAL_TIM_PWM_Init(&g_atimx_cplm_pwm_handle);
 
     sConfigOC.OCMode = TIM_OCMODE_PWM1;
-    sConfigOC.OCPolarity = TIM_OCPOLARITY_LOW;           /* OCy µÍµçÆ½ÓĞĞ§ */
-    sConfigOC.OCNPolarity = TIM_OCNPOLARITY_LOW;         /* OCyN µÍµçÆ½ÓĞĞ§ */
-    HAL_TIM_PWM_ConfigChannel(&g_atimx_cplm_pwm_handle, &sConfigOC, ATIM_TIMX_CPLM_CHY);     /*ÅäÖÃºóÄ¬ÈÏÇåCCERµÄ»¥²¹Êä³öÎ»*/
-     
+    sConfigOC.OCPolarity = TIM_OCPOLARITY_LOW;      /* OCy ä½ç”µå¹³æœ‰æ•ˆ */
+    sConfigOC.OCNPolarity = TIM_OCNPOLARITY_LOW;    /* OCyN ä½ç”µå¹³æœ‰æ•ˆ */
+    HAL_TIM_PWM_ConfigChannel(&g_atimx_cplm_pwm_handle, &sConfigOC, ATIM_TIMX_CPLM_CHY);
 
-    /* ÉèÖÃPWMËÀÇø²ÎÊı */
-    sBreakDeadTimeConfig.BreakState = TIM_BREAK_ENABLE;                  /* BKE = 1, Ê¹ÄÜBKIN¼ì²â */
-    sBreakDeadTimeConfig.LockLevel = TIM_LOCKLEVEL_OFF;                 /* ÉÏµçÖ»ÄÜĞ´Ò»´Î£¬ĞèÒª¸üĞÂËÀÇøÊ±¼äÊ±Ö»ÓÃÄÜÓÃ´ËÖµ */
-    sBreakDeadTimeConfig.BreakPolarity = TIM_BREAKPOLARITY_HIGH;          /*BKP = 1, BKIN¸ßµçÆ½ÓĞĞ§*/
-    sBreakDeadTimeConfig.AutomaticOutput = TIM_AUTOMATICOUTPUT_ENABLE;      /* Ê¹ÄÜAOEÎ»£¬ÔÊĞíÉ²³µºó×Ô¶¯»Ö¸´Êä³ö */
-    HAL_TIMEx_ConfigBreakDeadTime(&g_atimx_cplm_pwm_handle, &sBreakDeadTimeConfig);      /* ÉèÖÃBDTR¼Ä´æÆ÷ */
-    
-    HAL_TIM_PWM_Start(&g_atimx_cplm_pwm_handle, ATIM_TIMX_CPLM_CHY);     /* OCy Êä³öÊ¹ÄÜ */
-    HAL_TIMEx_PWMN_Start(&g_atimx_cplm_pwm_handle,ATIM_TIMX_CPLM_CHY);   /* OCyN Êä³öÊ¹ÄÜ */
+    /* åˆ¹è½¦ä¸æ­»åŒºé…ç½®ï¼šBKIN é«˜ç”µå¹³æœ‰æ•ˆï¼ŒAOE è‡ªåŠ¨æ¢å¤è¾“å‡º */
+    sBreakDeadTimeConfig.BreakState = TIM_BREAK_ENABLE;
+    sBreakDeadTimeConfig.LockLevel = TIM_LOCKLEVEL_OFF;             /* å¯ä¿®æ”¹é…ç½® */
+    sBreakDeadTimeConfig.BreakPolarity = TIM_BREAKPOLARITY_HIGH;
+    sBreakDeadTimeConfig.AutomaticOutput = TIM_AUTOMATICOUTPUT_ENABLE;
+    HAL_TIMEx_ConfigBreakDeadTime(&g_atimx_cplm_pwm_handle, &sBreakDeadTimeConfig);
 
+    HAL_TIM_PWM_Start(&g_atimx_cplm_pwm_handle, ATIM_TIMX_CPLM_CHY);
+    HAL_TIMEx_PWMN_Start(&g_atimx_cplm_pwm_handle, ATIM_TIMX_CPLM_CHY);
 }
 
 /**
- * @brief       ¶¨Ê±Æ÷TIMX ÉèÖÃÊä³ö±È½ÏÖµ & ËÀÇøÊ±¼ä
- * @param       ccr: Êä³ö±È½ÏÖµ
- * @param       dtg: ËÀÇøÊ±¼ä
- *   @arg       dtg[7:5]=0xxÊ±, ËÀÇøÊ±¼ä = dtg[7:0] * tDTS
- *   @arg       dtg[7:5]=10xÊ±, ËÀÇøÊ±¼ä = (64 + dtg[6:0]) * 2  * tDTS
- *   @arg       dtg[7:5]=110Ê±, ËÀÇøÊ±¼ä = (32 + dtg[5:0]) * 8  * tDTS
- *   @arg       dtg[7:5]=111Ê±, ËÀÇøÊ±¼ä = (32 + dtg[5:0]) * 16 * tDTS
- *   @note      tDTS = 1 / (Ft /  CKD[1:0]) = 1 / 18M = 55.56ns
- * @retval      ÎŞ
+ * @brief   è®¾ç½®äº’è¡¥ PWM æ¯”è¾ƒå€¼ä¸æ­»åŒºæ—¶é—´
+ * @param   ccr : æ¯”è¾ƒå€¼ï¼ˆå†³å®šå ç©ºæ¯”ï¼‰
+ * @param   dtg : æ­»åŒºæ—¶é—´
+ *   @arg   dtg[7:5]=0xx  : æ­»åŒº = dtg[7:0] * tDTS
+ *   @arg   dtg[7:5]=10x  : æ­»åŒº = (64 + dtg[6:0]) * 2 * tDTS
+ *   @arg   dtg[7:5]=110  : æ­»åŒº = (32 + dtg[5:0]) * 8 * tDTS
+ *   @arg   dtg[7:5]=111  : æ­»åŒº = (32 + dtg[5:0]) * 16 * tDTS
  */
 void atim_timx_cplm_pwm_set(uint16_t ccr, uint8_t dtg)
 {
     sBreakDeadTimeConfig.DeadTime = dtg;
-    HAL_TIMEx_ConfigBreakDeadTime(&g_atimx_cplm_pwm_handle, &sBreakDeadTimeConfig);      /*ÖØÉèËÀÇøÊ±¼ä*/
-    __HAL_TIM_MOE_ENABLE(&g_atimx_cplm_pwm_handle);  /* MOE=1,Ê¹ÄÜÖ÷Êä³ö */    
-    ATIM_TIMX_CPLM_CHY_CCRY = ccr;          /* ÉèÖÃ±È½Ï¼Ä´æÆ÷ */
+    HAL_TIMEx_ConfigBreakDeadTime(&g_atimx_cplm_pwm_handle, &sBreakDeadTimeConfig);
+
+    __HAL_TIM_MOE_ENABLE(&g_atimx_cplm_pwm_handle);     /* ä½¿èƒ½ä¸»è¾“å‡º */
+    ATIM_TIMX_CPLM_CHY_CCRY = ccr;                      /* è®¾ç½®æ¯”è¾ƒå€¼ */
 }
 
-/*******************************¸ß¼¶¶¨Ê±Æ÷PWMÊäÈëÄ£Ê½³ÌĞò**************************************/
+/* ==================== PWM è¾“å…¥æ¨¡å¼ï¼ˆæµ‹é‡å‘¨æœŸ/å ç©ºæ¯”ï¼‰ ==================== */
 
 /**
- * @brief       ¶¨Ê±Æ÷TIMX Í¨µÀY PWMÊäÈëÄ£Ê½ ³õÊ¼»¯º¯Êı
- * @note
- *              ¸ß¼¶¶¨Ê±Æ÷µÄÊ±ÖÓÀ´×ÔAPB2, ¶øPCLK2 = 72Mhz, ÎÒÃÇÉèÖÃPPRE2²»·ÖÆµ, Òò´Ë
- *              ¸ß¼¶¶¨Ê±Æ÷Ê±ÖÓ = 72Mhz
- *              ¶¨Ê±Æ÷Òç³öÊ±¼ä¼ÆËã·½·¨: Tout = ((arr + 1) * (psc + 1)) / Ft us.
- *              Ft=¶¨Ê±Æ÷¹¤×÷ÆµÂÊ,µ¥Î»:Mhz
- *
- *              ±¾º¯Êı³õÊ¼»¯µÄÊ±ºò: Ê¹ÓÃpsc=0, arr¹Ì¶¨Îª65535. µÃµ½²ÉÑùÊ±ÖÓÆµÂÊÎª72Mhz,¾«¶ÈÔ¼13.8ns
- *
- * @param       ÎŞ
- * @retval      ÎŞ
+ * @brief   é«˜çº§å®šæ—¶å™¨ PWM è¾“å…¥æ¨¡å¼åˆå§‹åŒ–
+ * @note    ä½¿ç”¨ psc=0ã€arr=65535ï¼Œè®¡æ•°é¢‘ç‡ 72MHzï¼ˆçº¦ 13.9ns åˆ†è¾¨ç‡ï¼‰ï¼›
+ *          CH1 ä¸Šå‡æ²¿æ•è·å‘¨æœŸï¼ŒCH2 ä¸‹é™æ²¿æ•è·é«˜ç”µå¹³æ—¶é—´
  */
 void atim_timx_pwmin_chy_init(void)
 {
-    ATIM_TIMX_PWMIN_CHY_GPIO_CLK_ENABLE();
-    __HAL_RCC_AFIO_CLK_ENABLE();
-    AFIO_REMAP_PARTIAL(AFIO_EVCR_PORT_PC, AFIO_EVCR_PIN_PX6);     /* ¸´ÓÃTIM8_CH1/PC6 */
-    GPIO_InitTypeDef gpio_init_struct = {0};
-
-    gpio_init_struct.Pin = ATIM_TIMX_PWMIN_CHY_GPIO_PIN;
-    gpio_init_struct.Mode = GPIO_MODE_AF_PP; 
-    gpio_init_struct.Pull = GPIO_PULLDOWN;
-    gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH ;
-    HAL_GPIO_Init(ATIM_TIMX_PWMIN_CHY_GPIO_PORT, &gpio_init_struct);
-    
     TIM_SlaveConfigTypeDef sSlaveConfig = {0};
     TIM_IC_InitTypeDef sConfigIC = {0};
-    
+    GPIO_InitTypeDef gpio_init_struct = {0};
+
+    ATIM_TIMX_PWMIN_CHY_GPIO_CLK_ENABLE();
+    __HAL_RCC_AFIO_CLK_ENABLE();
+    AFIO->EVCR = ATIM_TIMX_PWMIN_EVCR_VALUE;    /* TIM8_CH1 é‡æ˜ å°„åˆ° PC6 */
+
+    gpio_init_struct.Pin = ATIM_TIMX_PWMIN_CHY_GPIO_PIN;
+    gpio_init_struct.Mode = GPIO_MODE_AF_PP;
+    gpio_init_struct.Pull = GPIO_PULLDOWN;
+    gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;
+    HAL_GPIO_Init(ATIM_TIMX_PWMIN_CHY_GPIO_PORT, &gpio_init_struct);
+
     ATIM_TIMX_PWMIN_CHY_CLK_ENABLE();
-    
-    g_timx_pwmin_chy_handle.Instance = ATIM_TIMX_PWMIN;           /* ¶¨Ê±Æ÷8 */
-    g_timx_pwmin_chy_handle.Init.Prescaler = 0;                   /* ¶¨Ê±Æ÷Ô¤·ÖÆµÏµÊı */
-    g_timx_pwmin_chy_handle.Init.CounterMode = TIM_COUNTERMODE_UP;/*ÏòÉÏ¼ÆÊıÄ£Ê½*/
-    g_timx_pwmin_chy_handle.Init.Period = 65535;                  /* ×Ô¶¯ÖØ×°ÔØÖµ */
-    g_timx_pwmin_chy_handle.Init.ClockDivision =TIM_CLOCKDIVISION_DIV1;/*²»·ÖÆµ*/
-    g_timx_pwmin_chy_handle.Init.RepetitionCounter = 0;           /*ÖØ¸´¼ÆÊıÆ÷¼Ä´æÆ÷Îª0*/
-    g_timx_pwmin_chy_handle.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE; /* Ê¹ÄÜÓ°×Ó¼Ä´æÆ÷TIMx_ARR */
+
+    g_timx_pwmin_chy_handle.Instance = ATIM_TIMX_PWMIN;
+    g_timx_pwmin_chy_handle.Init.Prescaler = 0;
+    g_timx_pwmin_chy_handle.Init.CounterMode = TIM_COUNTERMODE_UP;
+    g_timx_pwmin_chy_handle.Init.Period = 65535;
+    g_timx_pwmin_chy_handle.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+    g_timx_pwmin_chy_handle.Init.RepetitionCounter = 0;
+    g_timx_pwmin_chy_handle.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
     HAL_TIM_IC_Init(&g_timx_pwmin_chy_handle);
-    
-    /* ´ÓÄ£Ê½ÅäÖÃ£¬IT1´¥·¢¸üĞÂ */
-    sSlaveConfig.SlaveMode = TIM_SLAVEMODE_RESET;/* ´ÓÄ£Ê½£º¸´Î»Ä£Ê½ */
-    sSlaveConfig.InputTrigger = TIM_TS_TI1FP1;   /* ¶¨Ê±Æ÷ÊäÈë´¥·¢Ô´£ºTI1FP1 */
-    sSlaveConfig.TriggerPolarity = TIM_INPUTCHANNELPOLARITY_RISING; /*ÉÏÉıÑØ¼ì²â*/
-    sSlaveConfig.TriggerFilter = 0;              /* ²»ÂË²¨ */
+
+    /* ä»æ¨¡å¼ï¼šå¤ä½æ¨¡å¼ï¼ŒTI1FP1 ä¸Šå‡æ²¿å¤ä½è®¡æ•°å™¨ */
+    sSlaveConfig.SlaveMode = TIM_SLAVEMODE_RESET;
+    sSlaveConfig.InputTrigger = TIM_TS_TI1FP1;
+    sSlaveConfig.TriggerPolarity = TIM_INPUTCHANNELPOLARITY_RISING;
+    sSlaveConfig.TriggerFilter = 0;
     HAL_TIM_SlaveConfigSynchro(&g_timx_pwmin_chy_handle, &sSlaveConfig);
 
-    /* IC1²¶»ñ£ºÉÏÉıÑØ´¥·¢TI1FP1 */
-    sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_RISING;/* ÉÏÉıÑØ¼ì²â */
-    sConfigIC.ICSelection = TIM_ICSELECTION_DIRECTTI;      /*Ñ¡ÔñÊäÈë¶ËIC1Ó³Éäµ½TI1*/
-    sConfigIC.ICPrescaler = TIM_ICPSC_DIV1;                /* ²»·ÖÆµ */
-    sConfigIC.ICFilter = 0;                                /* ²»ÂË²¨ */
-    HAL_TIM_IC_ConfigChannel( &g_timx_pwmin_chy_handle, &sConfigIC, TIM_CHANNEL_1 );
-    
-    /* IC2²¶»ñ£ºÉÏÉıÑØ´¥·¢TI1FP2 */
-    sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_FALLING; /* ÏÂ½µÑØ¼ì²â */
-    sConfigIC.ICSelection = TIM_ICSELECTION_INDIRECTTI;      /*Ñ¡ÔñÊäÈë¶ËIC2Ó³Éäµ½TI1*/
-    HAL_TIM_IC_ConfigChannel(&g_timx_pwmin_chy_handle,&sConfigIC,TIM_CHANNEL_2);
-    
-    HAL_NVIC_SetPriority(ATIM_TIMX_PWMIN_IRQn, 1, 3);   /* ÉèÖÃÖĞ¶ÏÓÅÏÈ¼¶£¬ÇÀÕ¼ÓÅÏÈ¼¶1£¬×ÓÓÅÏÈ¼¶3 */
-    HAL_NVIC_EnableIRQ( ATIM_TIMX_PWMIN_IRQn );         /* ¿ªÆôTIMxÖĞ¶Ï */
-    
-    /* TIM1/TIM8ÓĞ¶ÀÁ¢µÄÊäÈë²¶»ñÖĞ¶Ï·şÎñº¯Êı */
-    if ( ATIM_TIMX_PWMIN == TIM1 || ATIM_TIMX_PWMIN == TIM8)
+    /* IC1ï¼šä¸Šå‡æ²¿æ•è·ï¼ˆå‘¨æœŸï¼‰ */
+    sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_RISING;
+    sConfigIC.ICSelection = TIM_ICSELECTION_DIRECTTI;
+    sConfigIC.ICPrescaler = TIM_ICPSC_DIV1;
+    sConfigIC.ICFilter = 0;
+    HAL_TIM_IC_ConfigChannel(&g_timx_pwmin_chy_handle, &sConfigIC, TIM_CHANNEL_1);
+
+    /* IC2ï¼šä¸‹é™æ²¿æ•è·ï¼ˆé«˜ç”µå¹³æ—¶é—´ï¼‰ï¼Œæ˜ å°„åˆ° TI1FP2 */
+    sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_FALLING;
+    sConfigIC.ICSelection = TIM_ICSELECTION_INDIRECTTI;
+    HAL_TIM_IC_ConfigChannel(&g_timx_pwmin_chy_handle, &sConfigIC, TIM_CHANNEL_2);
+
+    HAL_NVIC_SetPriority(ATIM_TIMX_PWMIN_IRQn, 1, 3);
+    HAL_NVIC_EnableIRQ(ATIM_TIMX_PWMIN_IRQn);
+
+    /* TIM1/TIM8 çš„æ•è·æ¯”è¾ƒä¸­æ–­ä¸æ›´æ–°ä¸­æ–­åˆ†å¼€ */
+    if (ATIM_TIMX_PWMIN == TIM1 || ATIM_TIMX_PWMIN == TIM8)
     {
-        HAL_NVIC_SetPriority(ATIM_TIMX_PWMIN_CC_IRQn, 1, 3); /* ÉèÖÃÖĞ¶ÏÓÅÏÈ¼¶£¬ÇÀÕ¼ÓÅÏÈ¼¶1£¬×ÓÓÅÏÈ¼¶3 */
-        HAL_NVIC_EnableIRQ(ATIM_TIMX_PWMIN_CC_IRQn);         /* ¿ªÆôTIMxÖĞ¶Ï */
+        HAL_NVIC_SetPriority(ATIM_TIMX_PWMIN_CC_IRQn, 1, 3);
+        HAL_NVIC_EnableIRQ(ATIM_TIMX_PWMIN_CC_IRQn);
     }
-    
+
     HAL_TIM_IC_Start_IT(&g_timx_pwmin_chy_handle, TIM_CHANNEL_1);
     HAL_TIM_IC_Start_IT(&g_timx_pwmin_chy_handle, TIM_CHANNEL_2);
 }
 
 /**
- * @brief       ¶¨Ê±Æ÷TIMX ¸üĞÂ/Òç³ö ÖĞ¶Ï·şÎñº¯Êı
- *   @note      TIM1/TIM8µÄÕâ¸öº¯Êı½öÓÃÓÚ¸üĞÂ/Òç³öÖĞ¶Ï·şÎñ,²¶»ñÔÚÁíÍâÒ»¸öº¯Êı!
- *              ÆäËûÆÕÍ¨¶¨Ê±Æ÷Ôò¸üĞÂ/Òç³ö/²¶»ñ,¶¼ÔÚÕâ¸öº¯ÊıÀïÃæ´¦Àí!
- * @param       ÎŞ
- * @retval      ÎŞ
+ * @brief   PWM è¾“å…¥æ›´æ–°ä¸­æ–­æœåŠ¡å‡½æ•°
+ * @note    TIM1/TIM8 çš„æ›´æ–°ä¸æ•è·æ¯”è¾ƒä¸­æ–­åˆ†å¼€ï¼Œæ­¤å¤„åªå¤„ç†æ›´æ–°ä¸­æ–­
  */
 void ATIM_TIMX_PWMIN_IRQHandler(void)
 {
-    HAL_TIM_IRQHandler(&g_timx_pwmin_chy_handle);/* ¶¨Ê±Æ÷¹²ÓÃ´¦Àíº¯Êı */
+    HAL_TIM_IRQHandler(&g_timx_pwmin_chy_handle);
 }
 
 /**
- * @brief       ¶¨Ê±Æ÷TIMX ÊäÈë²¶»ñ ÖĞ¶Ï·şÎñº¯Êı
- *   @note      ½öTIM1/TIM8ÓĞÕâ¸öº¯Êı,ÆäËûÆÕÍ¨¶¨Ê±Æ÷Ã»ÓĞÕâ¸öÖĞ¶Ï·şÎñº¯Êı!
- * @param       ÎŞ
- * @retval      ÎŞ
+ * @brief   PWM è¾“å…¥æ•è·æ¯”è¾ƒä¸­æ–­æœåŠ¡å‡½æ•°
  */
 void ATIM_TIMX_PWMIN_CC_IRQHandler(void)
 {
-    HAL_TIM_IRQHandler(&g_timx_pwmin_chy_handle);/* ¶¨Ê±Æ÷¹²ÓÃ´¦Àíº¯Êı */
+    HAL_TIM_IRQHandler(&g_timx_pwmin_chy_handle);
 }
 
 /**
- * @brief       ¶¨Ê±Æ÷TIMX PWMÊäÈëÄ£Ê½ ÖØĞÂÆô¶¯²¶»ñ
- * @param       ÎŞ
- * @retval      ÎŞ
+ * @brief   é‡ç½® PWM è¾“å…¥æµ‹é‡çŠ¶æ€ï¼Œé‡æ–°å¼€å§‹æµ‹é‡
  */
 void atim_timx_pwmin_chy_restart(void)
 {
-    sys_intx_disable();                     /* ¹Ø±ÕÖĞ¶Ï */
+    __disable_irq();    /* å…³é—­ä¸­æ–­ï¼Œä¿æŠ¤æµ‹é‡å˜é‡ */
 
-    g_atimxchy_pwmin_sta = 0;                /* ÇåÁã×´Ì¬,ÖØĞÂ¿ªÊ¼¼ì²â */
-    g_atimxchy_pwmin_hval=0;
-    g_atimxchy_pwmin_cval=0;
+    g_atimxchy_pwmin_sta = 0;
+    g_atimxchy_pwmin_hval = 0;
+    g_atimxchy_pwmin_cval = 0;
 
-    sys_intx_enable();                      /* ´ò¿ªÖĞ¶Ï */
+    __enable_irq();
 }
 
 /**
- * @brief       ¶¨Ê±Æ÷ÊäÈë²¶»ñÖĞ¶Ï´¦Àí»Øµ÷º¯Êı
- * @param       htim:¶¨Ê±Æ÷¾ä±úÖ¸Õë
- * @note        ¸Ãº¯ÊıÔÚHAL_TIM_IRQHandlerÖĞ»á±»µ÷ÓÃ
- *              ´Ëº¯ÊıÊÇ¶¨Ê±Æ÷¹²Í¬µ÷ÓÃµÄ»Øµ÷º¯Êı£¬ÎªÁË·ÀÖ¹ÖØ¶¨Òå´íÎó£¬
- *              ÎÒÃÇ°Ñgtim.cµÄHAL_TIM_IC_CaptureCallback()º¯ÊıÏÈÆÁ±Îµô.
- * @retval      ÎŞ
+ * @brief   å®šæ—¶å™¨è¾“å…¥æ•è·ä¸­æ–­å›è°ƒï¼ˆPWM è¾“å…¥æµ‹é‡ç»“æœæå–ï¼‰
+ * @param   htim : å®šæ—¶å™¨å¥æŸ„æŒ‡é’ˆ
+ * @note    ç”± HAL_TIM_IRQHandler è°ƒç”¨ï¼›+2 ä¸ºè¯¯å·®è¡¥å¿ç³»æ•°
  */
 void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
 {
-    
-    if (g_atimxchy_pwmin_sta == 0)   /* »¹Ã»ÓĞ³É¹¦²¶»ñ */
+    if (g_atimxchy_pwmin_sta == 0)              /* æœªæˆåŠŸæµ‹é‡ */
     {
         if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1)
-        {  
-            g_atimxchy_pwmin_hval = HAL_TIM_ReadCapturedValue(&g_timx_pwmin_chy_handle,TIM_CHANNEL_2)+2; /* ĞŞÕıÏµÊıÎª2, ¼Ó1 */
-            g_atimxchy_pwmin_cval = HAL_TIM_ReadCapturedValue(&g_timx_pwmin_chy_handle,TIM_CHANNEL_1)+2; /* ĞŞÕıÏµÊıÎª2, ¼Ó1 */
-            g_atimxchy_pwmin_sta = 1;        /* ±ê¼Ç²¶»ñ³É¹¦ */
+        {
+            g_atimxchy_pwmin_hval = HAL_TIM_ReadCapturedValue(&g_timx_pwmin_chy_handle, TIM_CHANNEL_2) + 2;
+            g_atimxchy_pwmin_cval = HAL_TIM_ReadCapturedValue(&g_timx_pwmin_chy_handle, TIM_CHANNEL_1) + 2;
+            g_atimxchy_pwmin_sta = 1;           /* æ ‡è®°æµ‹é‡æˆåŠŸ */
         }
     }
 }
-
-

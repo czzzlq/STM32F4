@@ -1,174 +1,27 @@
 /**
- ****************************************************************************************************
- * @file        atim.h
- * @author      ÕıµãÔ­×ÓÍÅ¶Ó(ALIENTEK)
- * @version     V1.3
- * @date        2020-04-21
- * @brief       ¸ß¼¶¶¨Ê±Æ÷ Çı¶¯´úÂë
- * @license     Copyright (c) 2020-2032, ¹ãÖİÊĞĞÇÒíµç×Ó¿Æ¼¼ÓĞÏŞ¹«Ë¾
- ****************************************************************************************************
- * @attention
- *
- * ÊµÑéÆ½Ì¨:ÕıµãÔ­×Ó STM32F103¿ª·¢°å
- * ÔÚÏßÊÓÆµ:www.yuanzige.com
- * ¼¼ÊõÂÛÌ³:www.openedv.com
- * ¹«Ë¾ÍøÖ·:www.alientek.com
- * ¹ºÂòµØÖ·:openedv.taobao.com
- *
- * ĞŞ¸ÄËµÃ÷
- * V1.0 20200421
- * µÚÒ»´Î·¢²¼
- * V1.1 20200421
- * 1, ĞÂÔöatim_timx_comp_pwm_initº¯Êı, ÊµÏÖÊä³ö±È½ÏÄ£Ê½PWMÊä³ö¹¦ÄÜ
- * V1.2 20200421
- * 1, Ôö¼Óatim_timx_cplm_pwm_initº¯Êı
- * 2, Ôö¼Óatim_timx_cplm_pwm_setº¯Êı
- * V1.3 20200421
- * 1, Ôö¼Óatim_timx_pwmin_chy_processº¯Êı
- * 2, Ôö¼Óatim_timx_pwmin_chy_initº¯Êı
- * 3, Ôö¼Óatim_timx_pwmin_chy_restartµÈº¯Êı
- *
- ****************************************************************************************************
+ * @file    atim.h
+ * @brief   é«˜çº§å®šæ—¶å™¨é©±åŠ¨æ¥å£ï¼ˆè¾“å‡ºæ¯”è¾ƒ PWM / äº’è¡¥ PWM / PWM è¾“å…¥æµ‹é‡ï¼‰
+ * @note    ç¡¬ä»¶é…ç½®è§ bsp/bsp_timer.h
  */
+#ifndef __ATIM_H__
+#define __ATIM_H__
 
-#ifndef __ATIM_H
-#define __ATIM_H
+#include "bsp_timer.h"
 
-#include "./SYSTEM/sys/sys.h"
+/* é«˜çº§å®šæ—¶å™¨ï¼šPWM è¾“å‡ºï¼ˆé€šç”¨æ¥å£ï¼ŒN è„‰å†² PWM æœªå®ç°ï¼‰ */
+void atim_timx_pwm_chy_init(uint16_t arr, uint16_t psc);
+void atim_timx_npwm_chy_init(uint16_t arr, uint16_t psc);
+void atim_timx_npwm_chy_set(uint32_t npwm);
 
-/******************************************************************************************/
-/* ¸ß¼¶¶¨Ê±Æ÷ ¶¨Òå */
+/* é«˜çº§å®šæ—¶å™¨ï¼šè¾“å‡ºæ¯”è¾ƒæ¨¡å¼ 4 è·¯ PWMï¼ˆ50% å ç©ºæ¯”ï¼Œç›¸ä½å·® 25%ï¼‰ */
+void atim_timx_comp_pwm_init(uint16_t arr, uint16_t psc);
 
- /* TIMX Êä³öÖ¸¶¨¸öÊıPWM ¶¨Òå 
- * ÕâÀïÊä³öµÄPWMÍ¨¹ıPC6(TIM8_CH1)Êä³ö, ÎÒÃÇÓÃ¶Å°îÏßÁ¬½ÓPC6ºÍPE5, È»ºóÔÚ³ÌĞòÀïÃæ½«PE5ÉèÖÃ³É¸¡¿ÕÊäÈë
- * ¾Í¿ÉÒÔ ¿´µ½TIM8_CH1¿ØÖÆLED1(GREEN)µÄÁÁÃğ, ÁÁÃğÒ»´Î±íÊ¾Ò»¸öPWM²¨
- * Ä¬ÈÏÊ¹ÓÃµÄÊÇTIM8_CH1.
- * ×¢Òâ: Í¨¹ıĞŞ¸ÄÕâ¼¸¸öºê¶¨Òå, ¿ÉÒÔÖ§³ÖTIM1/TIM8¶¨Ê±Æ÷, ÈÎÒâÒ»¸öIO¿ÚÊä³öÖ¸¶¨¸öÊıµÄPWM
- */
-#define ATIM_TIMX_NPWM_CHY_GPIO_PORT            GPIOC
-#define ATIM_TIMX_NPWM_CHY_GPIO_PIN             GPIO_PIN_6
-#define ATIM_TIMX_NPWM_CHY_GPIO_CLK_ENABLE()    do{  __HAL_RCC_GPIOC_CLK_ENABLE(); }while(0)   /* PC¿ÚÊ±ÖÓÊ¹ÄÜ */
+/* é«˜çº§å®šæ—¶å™¨ï¼šäº’è¡¥ PWMï¼ˆå«æ­»åŒºï¼‰ */
+void atim_timx_cplm_pwm_init(uint16_t arr, uint16_t psc);
+void atim_timx_cplm_pwm_set(uint16_t ccr, uint8_t dtg);
 
-#define ATIM_TIMX_NPWM                          TIM8
-#define ATIM_TIMX_NPWM_IRQn                     TIM8_UP_IRQn
-#define ATIM_TIMX_NPWM_IRQHandler               TIM8_UP_IRQHandler
-#define ATIM_TIMX_NPWM_CHY                      TIM_CHANNEL_1                                  /* Í¨µÀY,  1<= Y <=4 */
-#define ATIM_TIMX_NPWM_CHY_CCRX                 TIM8->CCR1                                     /* Í¨µÀYµÄÊä³ö±È½Ï¼Ä´æÆ÷ */
-#define ATIM_TIMX_NPWM_CHY_CLK_ENABLE()         do{ __HAL_RCC_TIM8_CLK_ENABLE(); }while(0)     /* TIM8 Ê±ÖÓÊ¹ÄÜ */
+/* é«˜çº§å®šæ—¶å™¨ï¼šPWM è¾“å…¥æ¨¡å¼ï¼ˆæµ‹é‡å‘¨æœŸä¸å ç©ºæ¯”ï¼‰ */
+void atim_timx_pwmin_chy_init(void);
+void atim_timx_pwmin_chy_restart(void);
 
-/* TIMX Êä³ö±È½ÏÄ£Ê½ ¶¨Òå 
- * ÕâÀïÍ¨¹ıTIM8µÄÊä³ö±È½ÏÄ£Ê½,¿ØÖÆPC6,PC7,PC8,PC9Êä³ö4Â·PWM,Õ¼¿Õ±È50%,²¢ÇÒÃ¿Ò»Â·PWMÖ®¼äµÄÏàÎ»²îÎª25%
- * ĞŞ¸ÄCCRx¿ÉÒÔĞŞ¸ÄÏàÎ».
- * Ä¬ÈÏÊÇÕë¶ÔTIM1
- * ×¢Òâ: Í¨¹ıĞŞ¸ÄÕâĞ©ºê¶¨Òå,¿ÉÒÔÖ§³ÖTIM1/TIM8ÈÎÒâÒ»¸ö¶¨Ê±Æ÷,ÈÎÒâÒ»¸öIO¿ÚÊ¹ÓÃÊä³ö±È½ÏÄ£Ê½,Êä³öPWM
- */
-#define ATIM_TIMX_COMP_CH1_GPIO_PORT            GPIOC
-#define ATIM_TIMX_COMP_CH1_GPIO_PIN             GPIO_PIN_6
-#define ATIM_TIMX_COMP_CH1_GPIO_CLK_ENABLE()    do{ __HAL_RCC_GPIOC_CLK_ENABLE(); }while(0)   /* PC¿ÚÊ±ÖÓÊ¹ÄÜ */
-
-#define ATIM_TIMX_COMP_CH2_GPIO_PORT            GPIOC
-#define ATIM_TIMX_COMP_CH2_GPIO_PIN             GPIO_PIN_7
-#define ATIM_TIMX_COMP_CH2_GPIO_CLK_ENABLE()    do{ __HAL_RCC_GPIOC_CLK_ENABLE(); }while(0)   /* PC¿ÚÊ±ÖÓÊ¹ÄÜ */
-
-#define ATIM_TIMX_COMP_CH3_GPIO_PORT            GPIOC
-#define ATIM_TIMX_COMP_CH3_GPIO_PIN             GPIO_PIN_8
-#define ATIM_TIMX_COMP_CH3_GPIO_CLK_ENABLE()    do{ __HAL_RCC_GPIOC_CLK_ENABLE(); }while(0)   /* PC¿ÚÊ±ÖÓÊ¹ÄÜ */
-
-#define ATIM_TIMX_COMP_CH4_GPIO_PORT            GPIOC
-#define ATIM_TIMX_COMP_CH4_GPIO_PIN             GPIO_PIN_9
-#define ATIM_TIMX_COMP_CH4_GPIO_CLK_ENABLE()    do{ __HAL_RCC_GPIOC_CLK_ENABLE(); }while(0)   /* PC¿ÚÊ±ÖÓÊ¹ÄÜ */
-
-#define ATIM_TIMX_COMP                          TIM8            
-#define ATIM_TIMX_COMP_CH1_CCRX                 ATIM_TIMX_COMP->CCR1                          /* Í¨µÀ1µÄÊä³ö±È½Ï¼Ä´æÆ÷ */
-#define ATIM_TIMX_COMP_CH2_CCRX                 ATIM_TIMX_COMP->CCR2                          /* Í¨µÀ2µÄÊä³ö±È½Ï¼Ä´æÆ÷ */
-#define ATIM_TIMX_COMP_CH3_CCRX                 ATIM_TIMX_COMP->CCR3                          /* Í¨µÀ3µÄÊä³ö±È½Ï¼Ä´æÆ÷ */
-#define ATIM_TIMX_COMP_CH4_CCRX                 ATIM_TIMX_COMP->CCR4                          /* Í¨µÀ4µÄÊä³ö±È½Ï¼Ä´æÆ÷ */
-#define ATIM_TIMX_COMP_CLK_ENABLE()             do{ __HAL_RCC_TIM8_CLK_ENABLE(); }while(0)    /* TIM8 Ê±ÖÓÊ¹ÄÜ */
-
-
-/* TIMX »¥²¹Êä³öÄ£Ê½ ¶¨Òå 
- * ÕâÀïÉèÖÃ»¥²¹Êä³öÏà¹ØÓ²¼şÅäÖÃ, CHY¼´Õı³£Êä³ö, CHYN¼´»¥²¹Êä³ö
- * ĞŞ¸ÄCCRx¿ÉÒÔĞŞ¸ÄÕ¼¿Õ±È.
- * Ä¬ÈÏÊÇÕë¶ÔTIM1
- * ×¢Òâ: Í¨¹ıĞŞ¸ÄÕâĞ©ºê¶¨Òå,¿ÉÒÔÖ§³ÖTIM1/TIM8¶¨Ê±Æ÷, ÈÎÒâÒ»¸öIO¿ÚÊä³ö»¥²¹PWM(Ç°ÌáÊÇ±ØĞëÓĞ»¥²¹Êä³ö¹¦ÄÜ)
- */
-
-/* Êä³öÍ¨µÀÒı½Å */
-#define ATIM_TIMX_CPLM_CHY_GPIO_PORT            GPIOE
-#define ATIM_TIMX_CPLM_CHY_GPIO_PIN             GPIO_PIN_9
-#define ATIM_TIMX_CPLM_CHY_GPIO_CLK_ENABLE()    do{ __HAL_RCC_GPIOE_CLK_ENABLE(); }while(0)   /* PE¿ÚÊ±ÖÓÊ¹ÄÜ */
-
-/* »¥²¹Êä³öÍ¨µÀÒı½Å */
-#define ATIM_TIMX_CPLM_CHYN_GPIO_PORT           GPIOE
-#define ATIM_TIMX_CPLM_CHYN_GPIO_PIN            GPIO_PIN_8
-#define ATIM_TIMX_CPLM_CHYN_GPIO_CLK_ENABLE()   do{ __HAL_RCC_GPIOE_CLK_ENABLE(); }while(0)   /* PE¿ÚÊ±ÖÓÊ¹ÄÜ */
-
-/* É²³µÊäÈëÒı½Å */
-#define ATIM_TIMX_CPLM_BKIN_GPIO_PORT           GPIOE
-#define ATIM_TIMX_CPLM_BKIN_GPIO_PIN            GPIO_PIN_15
-#define ATIM_TIMX_CPLM_BKIN_GPIO_CLK_ENABLE()   do{ __HAL_RCC_GPIOE_CLK_ENABLE(); }while(0)   /* PE¿ÚÊ±ÖÓÊ¹ÄÜ */
-
-/* TIMX REMAPÉèÖÃ
- * ÒòÎªPE8/PE9/PE15, Ä¬ÈÏ²¢²»ÊÇTIM1µÄ¸´ÓÃ¹¦ÄÜ½Å, ±ØĞë¿ªÆôÍêÈ«ÖØÓ³Éä, ²Å¿ÉÒÔ½«: TIM1_CH1->PE9; TIM1_CH1N->PE8; TIM1_BKIN->PE15;
- * ÕâÑù, PE8/PE9/PE15, ²ÅÄÜÓÃ×÷TIM1µÄCH1N/CH1/BKIN¹¦ÄÜ.
- * Òò´Ë, ±ØĞëÊµÏÖATIM_TIMX_CPLM_CHYN_GPIO_REMAP, Í¨¹ısys_gpio_remap_setº¯ÊıÉèÖÃÖØÓ³Éä
- * Èç¹ûÎÒÃÇÊ¹ÓÃÄ¬ÈÏµÄ¸´ÓÃ¹¦ÄÜÊä³ö, Ôò²»ÓÃÉèÖÃÖØÓ³Éä, ÊÇ¿ÉÒÔ²»ĞèÒª¸Ãº¯ÊıµÄ! ¸ù¾İ¾ßÌåĞèÒªÀ´ÊµÏÖ.
- */
-#define ATIM_TIMX_CPLM_CHYN_GPIO_REMAP()        do{__HAL_RCC_AFIO_CLK_ENABLE();\
-                                                   __HAL_AFIO_REMAP_TIM1_ENABLE();\
-                                                }while(0)                     /* Í¨µÀREMAPÉèÖÃ, ¸Ãº¯Êı²»ÊÇ±ØĞëµÄ, ¸ù¾İĞèÒªÊµÏÖ */
-
-/* »¥²¹Êä³öÊ¹ÓÃµÄ¶¨Ê±Æ÷ */
-#define ATIM_TIMX_CPLM                          TIM1            
-#define ATIM_TIMX_CPLM_CHY                      TIM_CHANNEL_1            
-#define ATIM_TIMX_CPLM_CHY_CCRY                 ATIM_TIMX_CPLM->CCR1        
-#define ATIM_TIMX_CPLM_CLK_ENABLE()             do{ __HAL_RCC_TIM1_CLK_ENABLE(); }while(0)    /* TIM1 Ê±ÖÓÊ¹ÄÜ */
-
- /* TIMX PWMÊäÈëÄ£Ê½ ¶¨Òå 
- * ÕâÀïµÄÊäÈë²¶»ñÊ¹ÓÃ¶¨Ê±Æ÷TIM1_CH1,²¶»ñWK_UP°´¼üµÄÊäÈë
- * Ä¬ÈÏÊÇÕë¶ÔTIM1/TIM8µÈ¸ß¼¶¶¨Ê±Æ÷ 
- * ×¢Òâ: Í¨¹ıĞŞ¸ÄÕâ¼¸¸öºê¶¨Òå,¿ÉÒÔÖ§³ÖTIM1~TIM8ÈÎÒâÒ»¸ö¶¨Ê±Æ÷µÄÍ¨µÀ1/Í¨µÀ2
- */
-#define ATIM_TIMX_PWMIN_CHY_GPIO_PORT           GPIOC
-#define ATIM_TIMX_PWMIN_CHY_GPIO_PIN            GPIO_PIN_6
-#define ATIM_TIMX_PWMIN_CHY_GPIO_CLK_ENABLE()   do{ __HAL_RCC_GPIOC_CLK_ENABLE(); }while(0)   /* PC¿ÚÊ±ÖÓÊ¹ÄÜ */
-
-#define ATIM_TIMX_PWMIN                         TIM8                       
-#define ATIM_TIMX_PWMIN_IRQn                    TIM8_UP_IRQn
-#define ATIM_TIMX_PWMIN_IRQHandler              TIM8_UP_IRQHandler
-#define ATIM_TIMX_PWMIN_CHY                     TIM_CHANNEL_1                           /* Í¨µÀY,  1<= Y <=2*/ 
-#define ATIM_TIMX_PWMIN_CHY_CLK_ENABLE()        do{ __HAL_RCC_TIM8_CLK_ENABLE(); }while(0)  /* TIM8 Ê±ÖÓÊ¹ÄÜ */
-
- /* TIM1 / TIM8 ÓĞ¶ÀÁ¢µÄ²¶»ñÖĞ¶Ï·şÎñº¯Êı,ĞèÒªµ¥¶À¶¨Òå,¶ÔÓÚTIM2~5µÈ,Ôò²»ĞèÒªÒÔÏÂ¶¨Òå */
-#define ATIM_TIMX_PWMIN_CC_IRQn                 TIM8_CC_IRQn
-#define ATIM_TIMX_PWMIN_CC_IRQHandler           TIM8_CC_IRQHandler
-
-/******************************************************************************************/
-
-void atim_timx_pwm_chy_init(uint16_t arr, uint16_t psc);    /* ¸ß¼¶¶¨Ê±Æ÷ PWM³õÊ¼»¯º¯Êı */
-void atim_timx_npwm_chy_init(uint16_t arr, uint16_t psc);   /* ¸ß¼¶¶¨Ê±Æ÷ Êä³öÖ¸¶¨¸öÊıPWM³õÊ¼»¯º¯Êı */
-void atim_timx_npwm_chy_set(uint32_t npwm);                 /* ¸ß¼¶¶¨Ê±Æ÷ ÉèÖÃÊä³öPWMµÄ¸öÊı */
-void atim_timx_comp_pwm_init(uint16_t arr, uint16_t psc);   /* ¸ß¼¶¶¨Ê±Æ÷ Êä³ö±È½ÏÄ£Ê½Êä³öPWM ³õÊ¼»¯º¯Êı */
-void atim_timx_cplm_pwm_init(uint16_t arr, uint16_t psc);   /* ¸ß¼¶¶¨Ê±Æ÷ »¥²¹Êä³ö ³õÊ¼»¯º¯Êı */
-void atim_timx_cplm_pwm_set(uint16_t ccr, uint8_t dtg);     /* ¸ß¼¶¶¨Ê±Æ÷ »¥²¹Êä³ö ÉèÖÃÊä³ö±È½ÏÖµ & ËÀÇøÊ±¼ä */
-void atim_timx_pwmin_chy_init(void);                        /* ¸ß¼¶¶¨Ê±Æ÷ PWMÊäÈëÄ£Ê½³õÊ¼»¯ */
-void atim_timx_pwmin_chy_restart(void);                     /* ¸ß¼¶¶¨Ê±Æ÷ ÖØÆôPWMÊäÈëÄ£Ê½¼ì²â */
-
-#endif
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+#endif /* __ATIM_H__ */
