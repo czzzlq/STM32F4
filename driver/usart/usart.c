@@ -8,6 +8,7 @@
  *          printf 与 DMA 发送不可并发（fputc 内部会等待 DMA 发送完成）
  */
 #include "usart.h"
+#include "os_wrapper.h"
 #include <string.h>
 
 static UART_HandleTypeDef s_uartHandle;
@@ -17,6 +18,12 @@ static DMA_HandleTypeDef s_uartTxDma;
 /* 环形接收缓冲（DMA 循环模式写入，2 的幂大小便于掩码取模） */
 static uint8_t s_rxDmaBuf[USART1_RX_DMA_BUF_SIZE];
 static uint16_t s_rxReadIndex = 0;      /* 消费者读指针 */
+
+#if OS_USE_FREERTOS
+static os_sem_handle_t s_rxFrameSem = NULL;     /* 帧到达信号量 */
+#else
+static volatile uint8_t s_rxFrameFlag = 0;      /* 裸机模式：帧到达标志 */
+#endif
 
 #define RX_DMA_MASK     (USART1_RX_DMA_BUF_SIZE - 1)
 
@@ -167,9 +174,54 @@ void usart1FlushRx(void)
  * @param   len : 当前缓冲内可读字节数（即本帧长度）
  * @note    在 USART 中断上下文中执行
  */
+/**
+ * @brief   等待一帧到达（阻塞接口，替代任务轮询）
+ * @param   timeoutMs : 超时毫秒数，0xFFFFFFFF 表示永久等待
+ * @retval  当前可读字节数（帧长度）；0 表示超时
+ * @note    FreeRTOS 模式：阻塞在帧信号量上（由 IDLE 中断释放），
+ *          USART1 中断优先级须在 FreeRTOS 管理范围内（>=5）
+ *          裸机模式：按 tick 忙等待帧标志
+ */
+uint16_t usart1WaitFrame(uint32_t timeoutMs)
+{
+#if OS_USE_FREERTOS
+    if (s_rxFrameSem == NULL || !os_sem_take(s_rxFrameSem, timeoutMs))
+    {
+        return 0;
+    }
+#else
+    uint32_t startTick = HAL_GetTick();
+
+    while (!s_rxFrameFlag)
+    {
+        if ((timeoutMs != 0xFFFFFFFF) && ((HAL_GetTick() - startTick) >= timeoutMs))
+        {
+            return 0;
+        }
+    }
+    s_rxFrameFlag = 0;
+#endif
+    return usart1RxAvailable();
+}
+
+/**
+ * @brief   帧结束（总线空闲）回调（弱函数，应用层可重写）
+ * @param   len : 当前缓冲内可读字节数（即本帧长度）
+ * @note    在 USART 中断上下文中执行；驱动默认实现释放帧信号量
+ *          唤醒 usart1WaitFrame。应用层重写时需自行处理通知
+ */
 __WEAK void usart1RxIdleHook(uint16_t len)
 {
     (void)len;
+
+#if OS_USE_FREERTOS
+    if (s_rxFrameSem != NULL)
+    {
+        os_sem_give_from_isr(s_rxFrameSem);
+    }
+#else
+    s_rxFrameFlag = 1;
+#endif
 }
 
 #endif /* USART1_RX_ENABLE */
@@ -244,6 +296,10 @@ void usart1Init(uint32_t baudRate)
     }
 
 #if USART1_RX_ENABLE
+#if OS_USE_FREERTOS
+    s_rxFrameSem = os_sem_create_binary();      /* 帧到达信号量 */
+#endif
+
     /* 启动环形 DMA 接收 + IDLE 帧结束检测 */
     __HAL_UART_ENABLE_IT(&s_uartHandle, UART_IT_IDLE);
 
@@ -318,9 +374,11 @@ void HAL_UART_MspInit(UART_HandleTypeDef *huart)
     HAL_NVIC_SetPriority(USART1_TX_DMA_IRQn, 3, 1);
     HAL_NVIC_EnableIRQ(USART1_TX_DMA_IRQn);
 
-    /* USART 中断（含 IDLE/ORE 帧处理） */
+    /* USART 中断（含 IDLE/ORE 帧处理）
+     * 优先级 5/0：位于 FreeRTOS 管理范围内（5~15），
+     * IDLE 回调中可安全调用 FromISR API（帧信号量） */
     HAL_NVIC_EnableIRQ(USART1_CFG_IRQn);
-    HAL_NVIC_SetPriority(USART1_CFG_IRQn, 3, 3);     /* 抢占优先级 3，子优先级 3 */
+    HAL_NVIC_SetPriority(USART1_CFG_IRQn, 5, 0);
 }
 
 /**

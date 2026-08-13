@@ -25,9 +25,14 @@ uint8_t usart1ReadByte(uint8_t *pData);
 uint16_t usart1ReadBytes(uint8_t *pBuf, uint16_t len);
 /* 清空接收缓冲区（丢弃全部未读数据） */
 void usart1FlushRx(void);
+/* 等待一帧到达（总线空闲），阻塞直到收到帧或超时
+ * timeoutMs: 超时毫秒数，0xFFFFFFFF 表示永久等待
+ * retval: 当前可读字节数（即帧长度）；0 表示超时 */
+uint16_t usart1WaitFrame(uint32_t timeoutMs);
 /* 帧结束（总线空闲）回调，由中断触发，应用层可重写
  * 注意：声明不带 weak（弱属性只加在 usart.c 的定义上），
- * 否则应用层的覆盖定义会被 armcc 传播为弱符号，链接时报重定义 */
+ * 否则应用层的覆盖定义会被 armcc 传播为弱符号，链接时报重定义
+ * 驱动弱实现内部会释放帧信号量唤醒 usart1WaitFrame */
 void usart1RxIdleHook(uint16_t len);
 
 /* ==================== 初始化与发送 ==================== */

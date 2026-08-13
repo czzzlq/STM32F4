@@ -28,21 +28,6 @@ static os_task_handle_t s_keyTaskHandle;
 static os_task_handle_t s_ledTaskHandle;
 static os_task_handle_t s_uartTaskHandle;
 
-/* ==================== 串口帧通知（ISR 置位，任务消费） ==================== */
-static volatile uint8_t s_uartFrameReady = 0;
-static volatile uint16_t s_uartFrameLen = 0;
-
-/**
- * @brief   串口帧结束（总线空闲）回调，在 USART 中断上下文中执行
- * @param   len : 缓冲内可读字节数（本帧长度）
- * @note    只置标志，实际处理放到任务中（ISR 保持短小）
- */
-void usart1RxIdleHook(uint16_t len)
-{
-    s_uartFrameLen = len;
-    s_uartFrameReady = 1;
-}
-
 /* ==================== 自检用静态缓冲 ==================== */
 /* 测试区避开 malloc 外部内存池区（0x68000000 ~ 0x68000022），从 0x1000 开始 */
 #define SRAM_TEST_OFFSET    0x1000
@@ -292,7 +277,8 @@ static void led_task(void *pvParameters)
 
 /**
  * @brief   串口任务：收到一帧（IDLE 触发）后原样回显（环形缓冲 + DMA 收发验证）
- * @note    回显路径：DMA 环收 -> usart1ReadBytes -> usart1SendBytes(DMA 发送)
+ * @note    回显路径：阻塞等帧信号量（usart1WaitFrame）-> usart1ReadBytes
+ *          -> usart1SendBytes(DMA 发送)；任务不轮询，帧到达立即响应
  */
 static void uart_task(void *pvParameters)
 {
@@ -303,21 +289,15 @@ static void uart_task(void *pvParameters)
 
     while (1)
     {
-        if (s_uartFrameReady)
+        uint16_t len = usart1WaitFrame(0xFFFFFFFF);     /* 阻塞等帧（IDLE 中断唤醒） */
+
+        if (len > 0)
         {
-            uint16_t len = s_uartFrameLen;
-            s_uartFrameReady = 0;
-
-            if (len > 0)
-            {
-                len = usart1ReadBytes(frameBuf, sizeof(frameBuf));
-                printf("[RX] %d bytes: ", len);
-                usart1SendBytes(frameBuf, len);     /* DMA 发送回显 */
-                printf("\r\n");
-            }
+            len = usart1ReadBytes(frameBuf, sizeof(frameBuf));
+            printf("[RX] %d bytes: ", len);
+            usart1SendBytes(frameBuf, len);     /* DMA 发送回显 */
+            printf("\r\n");
         }
-
-        os_delay_ms(5);
     }
 }
 
