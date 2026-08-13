@@ -363,7 +363,7 @@ void myfree(uint8_t memx, void *ptr)
     }
 
 #if MY_MALLOC_MAGIC_ENABLE
-    uint32_t *magicPtr = (uint32_t *)((uint32_t)ptr - 4);
+    uint32_t *magicPtr = (uint32_t *)((uintptr_t)ptr - 4);
 
     /* 块头被破坏：拒绝释放（防止状态表错乱），计数并回调 */
     if (*magicPtr != MEM_MAGIC)
@@ -373,9 +373,9 @@ void myfree(uint8_t memx, void *ptr)
         return;
     }
 
-    my_mem_free(memx, (uint32_t)ptr - (uint32_t)mallco_dev.membase[memx] - 4);
+    my_mem_free(memx, (uint32_t)((uintptr_t)ptr - (uintptr_t)mallco_dev.membase[memx] - 4));
 #else
-    my_mem_free(memx, (uint32_t)ptr - (uint32_t)mallco_dev.membase[memx]);
+    my_mem_free(memx, (uint32_t)((uintptr_t)ptr - (uintptr_t)mallco_dev.membase[memx]));
 #endif
 }
 
@@ -403,10 +403,10 @@ void *mymalloc(uint8_t memx, uint32_t size)
     }
 
 #if MY_MALLOC_MAGIC_ENABLE
-    *(uint32_t *)((uint32_t)mallco_dev.membase[memx] + offset) = MEM_MAGIC;
-    return (void *)((uint32_t)mallco_dev.membase[memx] + offset + 4);
+    *(uint32_t *)((uintptr_t)mallco_dev.membase[memx] + offset) = MEM_MAGIC;
+    return (void *)((uintptr_t)mallco_dev.membase[memx] + offset + 4);
 #else
-    return (void *)((uint32_t)mallco_dev.membase[memx] + offset);
+    return (void *)((uintptr_t)mallco_dev.membase[memx] + offset);
 #endif
 }
 
