@@ -19,6 +19,17 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+/* 弱符号定义（跨编译器）：AC5 用 __weak 关键字，GCC/AC6 用 attribute */
+#ifndef __WEAK
+#if defined(__CC_ARM)
+#define __WEAK  __weak
+#elif defined(__GNUC__)
+#define __WEAK  __attribute__((weak))
+#else
+#define __WEAK
+#endif
+#endif
+
 //状态码
 typedef enum{
     STATUS_OK           = 0,    //操作成功

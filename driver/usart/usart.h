@@ -10,6 +10,7 @@
 
 #include <stdio.h>
 #include "bsp_uart.h"
+#include "common_types.h"
 
 /* 串口驱动配置 */
 #define USART1_RX_ENABLE                1U          /* 1 使能接收，0 关闭 */
@@ -25,7 +26,7 @@ uint16_t usart1ReadBytes(uint8_t *pBuf, uint16_t len);
 /* 清空接收缓冲区（丢弃全部未读数据） */
 void usart1FlushRx(void);
 /* 帧结束（总线空闲）回调，由中断触发，应用层可重写 */
-void usart1RxIdleHook(uint16_t len) __attribute__((weak));
+__WEAK void usart1RxIdleHook(uint16_t len);
 
 /* ==================== 初始化与发送 ==================== */
 /* 串口1初始化（含环形 DMA 接收启动） */

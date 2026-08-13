@@ -167,8 +167,7 @@ void usart1FlushRx(void)
  * @param   len : 当前缓冲内可读字节数（即本帧长度）
  * @note    在 USART 中断上下文中执行
  */
-void usart1RxIdleHook(uint16_t len) __attribute__((weak));
-void usart1RxIdleHook(uint16_t len)
+__WEAK void usart1RxIdleHook(uint16_t len)
 {
     (void)len;
 }
