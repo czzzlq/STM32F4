@@ -1,0 +1,400 @@
+version: "4.1"
+name: Project
+type: ARM
+deviceName: STM32F103ZE
+packDir: .pack/Keil/STM32F1xx_DFP.2.3.0
+srcDirs: []
+virtualFolder:
+  name: <virtual_root>
+  files: []
+  folders:
+    - name: app
+      files:
+        - path: ../app/stm32f1xx_it.c
+        - path: ../app/stm32f1xx_it.h
+        - path: ../app/main.c
+        - path: ../app/main.h
+      folders:
+        - name: task
+          files:
+            - path: ../app/task/freertos_demo.c
+            - path: ../app/task/freertos_demo.h
+          folders: []
+    - name: driver
+      files: []
+      folders:
+        - name: LED
+          files:
+            - path: ../driver/LED/drv_led.c
+            - path: ../driver/LED/drv_led.h
+          folders: []
+        - name: LCD
+          files:
+            - path: ../driver/LCD/lcd.c
+            - path: ../driver/LCD/lcd.h
+            - path: ../driver/LCD/lcdfont.h
+          folders: []
+        - name: SRAM
+          files:
+            - path: ../driver/SRAM/sram.c
+            - path: ../driver/SRAM/sram.h
+          folders: []
+        - name: TIMER
+          files:
+            - path: ../driver/TIMER/btim.c
+            - path: ../driver/TIMER/btim.h
+            - path: ../driver/TIMER/timer_callback.c
+            - path: ../driver/TIMER/timer_callback.h
+          folders: []
+        - name: KEY
+          files:
+            - path: ../driver/KEY/drv_key.c
+            - path: ../driver/KEY/drv_key.h
+          folders: []
+        - name: delay
+          files:
+            - path: ../driver/delay/delay.c
+            - path: ../driver/delay/delay.h
+          folders: []
+        - name: usart
+          files:
+            - path: ../driver/usart/usart.c
+            - path: ../driver/usart/usart.h
+          folders: []
+    - name: Middlewares
+      files: []
+      folders:
+        - name: MALLOC
+          files:
+            - path: ../middleware/MALLOC/malloc.c
+            - path: ../middleware/MALLOC/malloc.h
+          folders: []
+    - name: bsp
+      files:
+        - path: ../bsp/bsp_gpio.h
+        - path: ../bsp/bsp_init.h
+        - path: ../bsp/bsp_init.c
+      folders: []
+    - name: common
+      files:
+        - path: ../common/common_types.h
+        - path: ../common/project_config.h
+      folders: []
+    - name: core
+      files: []
+      folders:
+        - name: CMSIS
+          files:
+            - path: ../core/CMSIS/Device/ST/STM32F1xx/Include/stm32f1xx.h
+            - path: ../core/CMSIS/Device/ST/STM32F1xx/Include/stm32f103xe.h
+            - path: ../core/CMSIS/Device/ST/STM32F1xx/Include/system_stm32f1xx.h
+            - path: ../core/CMSIS/Device/ST/STM32F1xx/Source/Templates/system_stm32f1xx.c
+            - path: ../core/CMSIS/Device/ST/STM32F1xx/Source/Templates/arm/startup_stm32f103xe.s
+            - path: ../core/CMSIS/Include/cmsis_armcc.h
+            - path: ../core/CMSIS/Include/cmsis_armclang.h
+            - path: ../core/CMSIS/Include/cmsis_compiler.h
+            - path: ../core/CMSIS/Include/cmsis_version.h
+            - path: ../core/CMSIS/Include/core_cm3.h
+            - path: ../core/CMSIS/Include/mpu_armv7.h
+          folders: []
+        - name: HAL
+          files: []
+          folders:
+            - name: src
+              files:
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_adc.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_adc_ex.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_can.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_cec.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_cortex.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_crc.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_dac.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_dac_ex.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_dma.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_eth.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_exti.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_flash.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_flash_ex.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_gpio.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_gpio_ex.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_hcd.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_i2c.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_i2s.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_irda.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_iwdg.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_mmc.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_msp.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_nand.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_nor.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_pccard.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_pcd.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_pcd_ex.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_pwr.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_rcc.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_rcc_ex.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_rtc.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_rtc_ex.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_sd.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_smartcard.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_spi.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_sram.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_tim.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_tim_ex.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_uart.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_usart.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_wwdg.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_ll_adc.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_ll_crc.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_ll_dac.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_ll_dma.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_ll_exti.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_ll_fsmc.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_ll_gpio.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_ll_i2c.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_ll_pwr.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_ll_rcc.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_ll_rtc.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_ll_sdmmc.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_ll_spi.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_ll_tim.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_ll_usart.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_ll_usb.c
+                - path: ../core/STM32F1xx_HAL_Driver/Src/stm32f1xx_ll_utils.c
+              folders: []
+            - name: inc
+              files:
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32_assert.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_adc.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_adc_ex.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_can.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_cec.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_conf.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_cortex.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_crc.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_dac.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_dac_ex.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_def.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_dma.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_dma_ex.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_eth.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_exti.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_flash.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_flash_ex.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_gpio.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_gpio_ex.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_hcd.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_i2c.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_i2s.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_irda.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_iwdg.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_mmc.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_nand.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_nor.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pccard.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pcd.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pcd_ex.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pwr.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_rcc.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_rcc_ex.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_rtc.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_rtc_ex.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_sd.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_smartcard.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_spi.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_sram.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim_ex.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_uart.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_usart.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_wwdg.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_ll_adc.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_ll_bus.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_ll_cortex.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_ll_crc.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_ll_dac.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_ll_dma.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_ll_exti.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_ll_fsmc.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_ll_gpio.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_ll_i2c.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_ll_iwdg.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_ll_pwr.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_ll_rcc.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_ll_rtc.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_ll_sdmmc.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_ll_spi.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_ll_system.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_ll_tim.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_ll_usart.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_ll_usb.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_ll_utils.h
+                - path: ../core/STM32F1xx_HAL_Driver/Inc/stm32f1xx_ll_wwdg.h
+              folders: []
+        - name: system
+          files:
+            - path: ../core/system/system_hal.c
+            - path: ../core/system/system_hal.h
+          folders: []
+    - name: os
+      files: []
+      folders:
+        - name: FreeRTOS
+          files:
+            - path: ../os/FreeRTOS/FreeRTOSConfig.h
+          folders:
+            - name: port
+              files:
+                - path: ../os/FreeRTOS/portable/MemMang/heap_4.c
+                - path: ../os/FreeRTOS/portable/RVDS/ARM_CM3/port.c
+                - path: ../os/FreeRTOS/portable/RVDS/ARM_CM3/portmacro.h
+              folders: []
+            - name: core
+              files:
+                - path: ../os/FreeRTOS/croutine.c
+                - path: ../os/FreeRTOS/event_groups.c
+                - path: ../os/FreeRTOS/list.c
+                - path: ../os/FreeRTOS/queue.c
+                - path: ../os/FreeRTOS/stream_buffer.c
+                - path: ../os/FreeRTOS/tasks.c
+                - path: ../os/FreeRTOS/timers.c
+              folders: []
+        - name: os_wapper
+          files:
+            - path: ../os/os_wrapper/os_wrapper.h
+            - path: ../os/os_wrapper/os_wrapper.c
+          folders: []
+    - name: utility
+      files: []
+      folders: []
+    - name: test
+      files: []
+      folders: []
+    - name: tool
+      files: []
+      folders: []
+dependenceList: []
+outDir: build
+miscInfo:
+  uid: 4e4b5e6b42ebb77e6df5af9b7d775d4b
+targets:
+  Debug:
+    cppPreprocessAttrs:
+      defineList:
+        - USE_HAL_DRIVER
+        - STM32F103xE
+        - STM32F10X_HD
+      incList:
+        - .
+        - ../app
+        - ../app/task
+        - ../bsp
+        - ../common
+        - ../core/system
+        - ../core/CMSIS/Device/ST/STM32F1xx/Include
+        - ../core/CMSIS/Include
+        - ../core/STM32F1xx_HAL_Driver/Inc
+        - ../driver/LED
+        - ../driver/KEY
+        - ../driver/LCD
+        - ../driver/SRAM
+        - ../driver/TIMER
+        - ../driver/delay
+        - ../driver/usart
+        - ../middleware/MALLOC
+        - ../os/os_wrapper
+        - ../os/FreeRTOS
+        - ../os/FreeRTOS/include
+        - ../os/FreeRTOS/portable/RVDS/ARM_CM3
+        - ../os/FreeRTOS/portable/MemMang
+      libList:
+        - ../app/task
+        - ../app
+        - ../bsp
+        - ../config
+        - ../core/CMSIS/Device/ST/STM32F1xx/Include
+        - ../core/CMSIS/Device/ST/STM32F1xx/Source/Templates/arm
+        - ../core/CMSIS/Device/ST/STM32F1xx/Source/Templates
+        - ../core/CMSIS/Include
+        - ../core/STM32F1xx_HAL_Driver/Inc
+        - ../core/STM32F1xx_HAL_Driver/Src
+        - ../core/sys
+        - ../driver/delay
+        - ../driver/KEY
+        - ../driver/LCD
+        - ../driver/LED
+        - ../driver/SRAM
+        - ../driver/TIMER
+        - ../driver/usart
+        - ../middleware/MALLOC
+        - ../os/FreeRTOS/include
+        - ../os/FreeRTOS/portable/MemMang
+        - ../os/FreeRTOS/portable/RVDS/ARM_CM3
+        - ../os/FreeRTOS
+        - ../os/os_warpper
+        - ../test
+        - ../tool
+        - ../utility
+    excludeList: []
+    settings:
+      debugger: cortex-debug
+    toolchain: AC5
+    toolchainConfigMap:
+      AC5:
+        archExtensions: ""
+        cpuType: Cortex-M3
+        floatingPointHardware: none
+        options:
+          version: 4
+          afterBuildTasks: []
+          asm-compiler: {}
+          beforeBuildTasks: []
+          c/cpp-compiler:
+            CXX_FLAGS: --diag_suppress=1 --diag_suppress=1295
+            C_FLAGS: --diag_suppress=1 --diag_suppress=1295
+            c99-mode: true
+            one-elf-section-per-function: true
+            optimization: level-0
+            warnings: unspecified
+          global:
+            output-debug-info: enable
+          linker:
+            output-format: elf
+            ro-base: "0x08000000"
+            rw-base: "0x20000000"
+        scatterFilePath: <YOUR_SCATTER_FILE>.sct
+        storageLayout:
+          RAM:
+            - id: 1
+              isChecked: true
+              mem:
+                size: "0x10000"
+                startAddr: "0x20000000"
+              noInit: false
+              tag: IRAM
+          ROM:
+            - id: 1
+              isChecked: true
+              isStartup: true
+              mem:
+                size: "0x80000"
+                startAddr: "0x08000000"
+              tag: IROM
+        useCustomScatterFile: false
+    uploadConfigMap:
+      JLink:
+        baseAddr: ""
+        bin: ./build/Debug/Project.hex
+        cpuInfo:
+          cpuName: STM32F103ZE
+          vendor: ST
+        otherCmds: ""
+        proType: 1
+        speed: 8000
+      OpenOCD:
+        baseAddr: "0x08000000"
+        bin: ./build/Debug/Project.hex
+        interface: jlink
+        target: stm32f1x
+    uploader: JLink
