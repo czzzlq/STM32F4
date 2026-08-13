@@ -6,6 +6,7 @@
  */
 #include "malloc.h"
 #include "bsp_sram.h"
+#include "os_wrapper.h"
 
 #if !(__ARMCC_VERSION >= 6010050)   /* AC5 编译器 */
 
@@ -124,8 +125,10 @@ void my_mem_set(void *s, uint8_t c, uint32_t count)
  */
 void my_mem_init(uint8_t memx)
 {
+    os_enter_critical();
     my_mem_set(mallco_dev.memmap[memx], 0, memtblsize[memx] * sizeof(MT_TYPE));
     mallco_dev.memrdy[memx] = 1;
+    os_exit_critical();
 }
 
 /**
@@ -140,6 +143,8 @@ uint16_t my_mem_perused(uint8_t memx)
     MT_TYPE *map = mallco_dev.memmap[memx];
     const uint32_t tableSize = memtblsize[memx];
     uint32_t i = 0;
+
+    os_enter_critical();    /* 统计期间防止其他任务并发分配/释放 */
 
     for (; i + 4 <= tableSize; i += 4)
     {
@@ -166,6 +171,8 @@ uint16_t my_mem_perused(uint8_t memx)
         }
     }
 
+    os_exit_critical();
+
     return (uint16_t)((used * 1000) / tableSize);
 }
 
@@ -188,7 +195,7 @@ static uint32_t my_mem_malloc(uint8_t memx, uint32_t size)
 
     if (!mallco_dev.memrdy[memx])
     {
-        mallco_dev.init(memx);
+        mallco_dev.init(memx);      /* 首次使用前初始化（此时无并发访问） */
     }
 
     if (size == 0)
@@ -204,6 +211,8 @@ static uint32_t my_mem_malloc(uint8_t memx, uint32_t size)
 
     map = mallco_dev.memmap[memx];
 
+    os_enter_critical();    /* 扫描+标记期间禁止任务切换（多任务并发分配安全） */
+
     /* 尾部不足 4 块的零头逐块扫描 */
     i = (int32_t)tableSize - 1;
     while ((i % 4) != 3)
@@ -216,6 +225,7 @@ static uint32_t my_mem_malloc(uint8_t memx, uint32_t size)
                 {
                     map[i + k] = (MT_TYPE)nmemb;
                 }
+                os_exit_critical();
                 return (uint32_t)i * blkSize;
             }
         }
@@ -226,6 +236,7 @@ static uint32_t my_mem_malloc(uint8_t memx, uint32_t size)
         i--;
         if (i < 0)
         {
+            os_exit_critical();
             return 0xFFFFFFFF;
         }
     }
@@ -248,6 +259,7 @@ static uint32_t my_mem_malloc(uint8_t memx, uint32_t size)
                 {
                     map[start + k] = (MT_TYPE)nmemb;
                 }
+                os_exit_critical();
                 return (uint32_t)start * blkSize;
             }
             cmemb += 4;
@@ -267,6 +279,7 @@ static uint32_t my_mem_malloc(uint8_t memx, uint32_t size)
                         {
                             map[block + k] = (MT_TYPE)nmemb;
                         }
+                        os_exit_critical();
                         return (uint32_t)block * blkSize;
                     }
                 }
@@ -278,6 +291,7 @@ static uint32_t my_mem_malloc(uint8_t memx, uint32_t size)
         }
     }
 
+    os_exit_critical();
     return 0xFFFFFFFF;              /* 未找到足够大的连续内存 */
 }
 
@@ -298,13 +312,20 @@ static uint8_t my_mem_free(uint8_t memx, uint32_t offset)
     if (offset < memsize[memx])
     {
         MT_TYPE *map = mallco_dev.memmap[memx];
-        uint32_t index = offset / memblksize[memx];         /* 偏移对应的内存块号 */
-        uint32_t nmemb = map[index];                        /* 该块记录的连续块数 */
+        uint32_t index;
+        uint32_t nmemb;
+
+        os_enter_critical();
+
+        index = offset / memblksize[memx];          /* 偏移对应的内存块号 */
+        nmemb = map[index];                         /* 该块记录的连续块数 */
 
         for (uint32_t i = 0; i < nmemb; i++)
         {
             map[index + i] = 0;
         }
+
+        os_exit_critical();
         return 0;
     }
 

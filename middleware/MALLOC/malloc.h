@@ -47,7 +47,7 @@ struct _m_mallco_dev
 
 extern struct _m_mallco_dev mallco_dev;
 
-/* 用户接口 */
+/* 用户接口（分配/释放/统计均经临界区保护，多任务安全；不可在中断中调用） */
 void my_mem_init(uint8_t memx);                     /* 内存池初始化 */
 uint16_t my_mem_perused(uint8_t memx);              /* 内存使用率（0~1000，对应 0.0%~100.0%） */
 void my_mem_set(void *s, uint8_t c, uint32_t count);/* 内存设置 */
