@@ -103,7 +103,7 @@ static void sram_self_test(void)
         errCount++;
     }
 
-    printf("[SRAM] 自检: %s (失败 %d 项)\r\n", (errCount == 0) ? "PASS" : "FAIL", errCount);
+    printf("[SRAM] self test: %s (%d errors)\r\n", (errCount == 0) ? "PASS" : "FAIL", errCount);
 }
 
 /**
@@ -124,7 +124,7 @@ static void malloc_self_test(void)
 
     if (p1 == NULL || p2 == NULL || p3 == NULL)
     {
-        printf("[MALLOC] 自检: FAIL (分配失败)\r\n");
+        printf("[MALLOC] self test: FAIL (alloc failed)\r\n");
         return;
     }
 
@@ -157,7 +157,7 @@ static void malloc_self_test(void)
         errCount++;
     }
 
-    printf("[MALLOC] 自检: %s (失败 %d 项, 使用率 IN=%d%% EX=%d%%)\r\n",
+    printf("[MALLOC] self test: %s (%d errors, used IN=%d%% EX=%d%%)\r\n",
            (errCount == 0) ? "PASS" : "FAIL", errCount,
            my_mem_perused(SRAMIN) / 10, my_mem_perused(SRAMEX) / 10);
 }
@@ -203,19 +203,19 @@ static void key_task(void *pvParameters)
         if (drv_key_get_event(DRV_KEY_ID_0) == DRV_KEY_EVENT_PRESS)
         {
             drv_led_toggle(DRV_LED_ID_0);
-            printf("[KEY] KEY0 短按, LED0 翻转\r\n");
+            printf("[KEY] KEY0 press, LED0 toggle\r\n");
         }
 
         if (drv_key_get_event(DRV_KEY_ID_1) == DRV_KEY_EVENT_PRESS)
         {
-            printf("[KEY] KEY1 短按, 重跑自检\r\n");
+            printf("[KEY] KEY1 press, re-run self test\r\n");
             sram_self_test();
             malloc_self_test();
         }
 
         if (drv_key_get_event(DRV_KEY_ID_WKUP) == DRV_KEY_EVENT_LONG_PRESS_TRIGGER)
         {
-            printf("[KEY] WKUP 长按, 重绘 LCD\r\n");
+            printf("[KEY] WKUP long press, redraw LCD\r\n");
             demo_lcd();
         }
 
@@ -246,7 +246,7 @@ static void uart_task(void *pvParameters)
     UNUSED(pvParameters);
     static uint8_t frameBuf[USART1_RX_DMA_BUF_SIZE];
 
-    printf("UART echo ready (环形缓冲+DMA)\r\n");
+    printf("UART echo ready (ring buffer + DMA)\r\n");
 
     while (1)
     {
@@ -275,7 +275,7 @@ static void start_task(void *pvParameters)
 {
     UNUSED(pvParameters);
 
-    printf("\r\n===== 驱动烧录验证 =====\r\n");
+    printf("\r\n===== Driver Verification =====\r\n");
     sram_self_test();
     malloc_self_test();
     demo_lcd();

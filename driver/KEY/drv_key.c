@@ -130,7 +130,7 @@ drv_key_event_t drv_key_get_event(uint8_t key_id)
 
     if (key_id >= DRV_KEY_ID_MAX)
     {
-        return STATUS_ERR_PARAM;
+        return (drv_key_event_t)STATUS_ERR_PARAM;
     }
 
     os_enter_critical();

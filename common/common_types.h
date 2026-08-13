@@ -40,8 +40,10 @@ typedef enum{
     STATUS_ERR_NO_MEM   = -5    //内存不足
 } status_t;                    
 
-// 忽略未使用的变量，避免编译器警告 
-#define UNUSED(x)   ((void)(x))
+// 忽略未使用的变量，避免编译器警告（与 HAL 库定义逐字一致，避免重复定义告警）
+#ifndef UNUSED
+#define UNUSED(X) (void)X
+#endif
 
 //计算数组元素的个数
 #define ARRAY_SIZE(a)   (sizeof(a) / sizeof(a[0]))

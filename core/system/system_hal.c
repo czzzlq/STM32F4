@@ -15,45 +15,6 @@
 static SystemClockConfig_t s_clockConfig;
 
 /**
- * @brief   使能 HSE 外部晶振并等待就绪
- */
-static SYSTEM_INLINE void systemCoreEnableHSE(void)
-{
-    RCC->CR |= RCC_CR_HSEON;
-    while (!(RCC->CR & RCC_CR_HSERDY));
-}
-
-/**
- * @brief   配置并使能 PLL
- * @param   pllMultiplier : PLL 倍频系数
- */
-static SYSTEM_INLINE void systemCoreEnablePLL(uint8_t pllMultiplier)
-{
-    /* 先关闭 PLL，确保修改参数时 PLL 处于停止状态 */
-    RCC->CR &= ~RCC_CR_PLLON;
-    while (RCC->CR & RCC_CR_PLLRDY);
-
-    /* 修改倍频系数与时钟源（HSE） */
-    RCC->CFGR &= ~RCC_CFGR_PLLMULL;
-    RCC->CFGR |= (pllMultiplier - 2) << 18;     /* 位值 = 倍频系数 - 2 */
-    RCC->CFGR |= RCC_CFGR_PLLSRC;
-
-    /* 使能 PLL 并等待锁定 */
-    RCC->CR |= RCC_CR_PLLON;
-    while (!(RCC->CR & RCC_CR_PLLRDY));
-}
-
-/**
- * @brief   将系统时钟切换到 PLL 输出
- */
-static SYSTEM_INLINE void systemCoreSwitchToPll(void)
-{
-    RCC->CFGR &= ~RCC_CFGR_SW;
-    RCC->CFGR |= RCC_CFGR_SW_PLL;
-    while ((RCC->CFGR & RCC_CFGR_SWS) != RCC_CFGR_SW_PLL);
-}
-
-/**
  * @brief   系统时钟初始化（HSE -> PLL -> 总线预分频）
  * @param   pllMultipler : PLL 倍频系数（9 表示 8MHz × 9 = 72MHz）
  */

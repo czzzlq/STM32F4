@@ -25,8 +25,10 @@ uint8_t usart1ReadByte(uint8_t *pData);
 uint16_t usart1ReadBytes(uint8_t *pBuf, uint16_t len);
 /* 清空接收缓冲区（丢弃全部未读数据） */
 void usart1FlushRx(void);
-/* 帧结束（总线空闲）回调，由中断触发，应用层可重写 */
-__WEAK void usart1RxIdleHook(uint16_t len);
+/* 帧结束（总线空闲）回调，由中断触发，应用层可重写
+ * 注意：声明不带 weak（弱属性只加在 usart.c 的定义上），
+ * 否则应用层的覆盖定义会被 armcc 传播为弱符号，链接时报重定义 */
+void usart1RxIdleHook(uint16_t len);
 
 /* ==================== 初始化与发送 ==================== */
 /* 串口1初始化（含环形 DMA 接收启动） */
