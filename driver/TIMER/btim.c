@@ -9,8 +9,8 @@
 #include "btim.h"
 #include "timer_callback.h"
 
-TIM_HandleTypeDef g_tim3_handle;
-TIM_HandleTypeDef g_tim5_handle;
+static TIM_HandleTypeDef s_tim3Handle;
+static TIM_HandleTypeDef s_tim5Handle;
 
 /**
  * @brief   TIM3 定时中断初始化
@@ -22,17 +22,17 @@ void btim_tim3_init(uint16_t arr, uint16_t psc)
 {
     BTIM_TIM3_INT_CLK_ENABLE();
 
-    g_tim3_handle.Instance = BTIM_TIM3_INT;
-    g_tim3_handle.Init.Prescaler = psc;
-    g_tim3_handle.Init.CounterMode = TIM_COUNTERMODE_UP;
-    g_tim3_handle.Init.Period = arr;
-    g_tim3_handle.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-    HAL_TIM_Base_Init(&g_tim3_handle);
+    s_tim3Handle.Instance = BTIM_TIM3_INT;
+    s_tim3Handle.Init.Prescaler = psc;
+    s_tim3Handle.Init.CounterMode = TIM_COUNTERMODE_UP;
+    s_tim3Handle.Init.Period = arr;
+    s_tim3Handle.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+    HAL_TIM_Base_Init(&s_tim3Handle);
 
     HAL_NVIC_SetPriority(BTIM_TIM3_INT_IRQn, 4, 0);
     HAL_NVIC_EnableIRQ(BTIM_TIM3_INT_IRQn);
 
-    HAL_TIM_Base_Start_IT(&g_tim3_handle);
+    HAL_TIM_Base_Start_IT(&s_tim3Handle);
 }
 
 /**
@@ -45,17 +45,17 @@ void btim_tim5_init(uint16_t arr, uint16_t psc)
 {
     BTIM_TIM5_INT_CLK_ENABLE();
 
-    g_tim5_handle.Instance = BTIM_TIM5_INT;
-    g_tim5_handle.Init.Prescaler = psc;
-    g_tim5_handle.Init.CounterMode = TIM_COUNTERMODE_UP;
-    g_tim5_handle.Init.Period = arr;
-    g_tim5_handle.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-    HAL_TIM_Base_Init(&g_tim5_handle);
+    s_tim5Handle.Instance = BTIM_TIM5_INT;
+    s_tim5Handle.Init.Prescaler = psc;
+    s_tim5Handle.Init.CounterMode = TIM_COUNTERMODE_UP;
+    s_tim5Handle.Init.Period = arr;
+    s_tim5Handle.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+    HAL_TIM_Base_Init(&s_tim5Handle);
 
     HAL_NVIC_SetPriority(BTIM_TIM5_INT_IRQn, 6, 0);
     HAL_NVIC_EnableIRQ(BTIM_TIM5_INT_IRQn);
 
-    HAL_TIM_Base_Start_IT(&g_tim5_handle);
+    HAL_TIM_Base_Start_IT(&s_tim5Handle);
 }
 
 /**

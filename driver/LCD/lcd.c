@@ -4,21 +4,30 @@
  * @note    1. 硬件配置见 bsp/bsp_lcd.h，换板/换屏只需改 BSP 层
  *          2. 支持 ILI9341/NT35310/NT35510/SSD1963/ST7789/ST7796/ILI9806，
  *             寄存器初始化序列见 lcd_ex.c（以文本方式包含编译）
- *          3. 热路径（清屏/填充/字符显示）均采用"设窗口+连续写 RAM"方式
+ *          3. 算法优化：区域填充单次设窗口连续写 RAM；画线水平段批量化；
+ *             数字显示查 10 次幂表；ID 探测表驱动
  */
 #include "lcd.h"
 #include "lcdfont.h"
 #include "usart.h"
 #include "delay.h"
+#include "common_types.h"
 
 #include "lcd_ex.c"     /* 各 IC 的寄存器初始化序列（勿单独加入工程） */
 
-static SRAM_HandleTypeDef g_sram_handle;    /* FSMC 句柄（LCD 使用） */
+static SRAM_HandleTypeDef s_sramHandle;     /* FSMC 句柄（LCD 使用） */
 
 uint32_t g_point_color = 0XF800;            /* 画笔颜色，默认红色 */
 uint32_t g_back_color  = 0XFFFF;            /* 背景颜色，默认白色 */
 
 _lcd_dev lcddev;                            /* LCD 关键参数 */
+
+/* 10 的幂表（数字显示用，len 有效范围 1~10） */
+static const uint32_t s_pow10Table[10] =
+{
+    1U, 10U, 100U, 1000U, 10000U,
+    100000U, 1000000U, 10000000U, 100000000U, 1000000000U
+};
 
 /**
  * @brief   写数据到 LCD RAM
@@ -58,11 +67,11 @@ static void lcd_opt_delay(uint32_t i)
  */
 static uint16_t lcd_rd_data(void)
 {
-    volatile uint16_t ram;
+    volatile uint16_t ramData;
 
     lcd_opt_delay(2);
-    ram = LCD->LCD_RAM;
-    return ram;
+    ramData = LCD->LCD_RAM;
+    return ramData;
 }
 
 /**
@@ -197,9 +206,9 @@ void lcd_set_cursor(uint16_t x, uint16_t y)
  */
 void lcd_scan_dir(uint8_t dir)
 {
-    uint16_t regval = 0;
-    uint16_t dirreg = 0;
-    uint16_t temp;
+    uint16_t regValue = 0;
+    uint16_t dirReg = 0;
+    uint16_t swapTemp;
 
     /* 横屏（或 1963 竖屏）时做方向转换 */
     if ((lcddev.dir == 1 && lcddev.id != 0X1963) || (lcddev.dir == 0 && lcddev.id == 0X1963))
@@ -220,48 +229,48 @@ void lcd_scan_dir(uint8_t dir)
     /* 方向写入 0X36 寄存器 bit5~7 */
     switch (dir)
     {
-        case L2R_U2D: regval |= (0 << 7) | (0 << 6) | (0 << 5); break;
-        case L2R_D2U: regval |= (1 << 7) | (0 << 6) | (0 << 5); break;
-        case R2L_U2D: regval |= (0 << 7) | (1 << 6) | (0 << 5); break;
-        case R2L_D2U: regval |= (1 << 7) | (1 << 6) | (0 << 5); break;
-        case U2D_L2R: regval |= (0 << 7) | (0 << 6) | (1 << 5); break;
-        case U2D_R2L: regval |= (0 << 7) | (1 << 6) | (1 << 5); break;
-        case D2U_L2R: regval |= (1 << 7) | (0 << 6) | (1 << 5); break;
-        case D2U_R2L: regval |= (1 << 7) | (1 << 6) | (1 << 5); break;
+        case L2R_U2D: regValue |= (0 << 7) | (0 << 6) | (0 << 5); break;
+        case L2R_D2U: regValue |= (1 << 7) | (0 << 6) | (0 << 5); break;
+        case R2L_U2D: regValue |= (0 << 7) | (1 << 6) | (0 << 5); break;
+        case R2L_D2U: regValue |= (1 << 7) | (1 << 6) | (0 << 5); break;
+        case U2D_L2R: regValue |= (0 << 7) | (0 << 6) | (1 << 5); break;
+        case U2D_R2L: regValue |= (0 << 7) | (1 << 6) | (1 << 5); break;
+        case D2U_L2R: regValue |= (1 << 7) | (0 << 6) | (1 << 5); break;
+        case D2U_R2L: regValue |= (1 << 7) | (1 << 6) | (1 << 5); break;
     }
 
-    dirreg = 0X36;                              /* 大部分 IC 的寄存器地址 */
+    dirReg = 0X36;                              /* 大部分 IC 的寄存器地址 */
 
     if (lcddev.id == 0X5510)
     {
-        dirreg = 0X3600;                        /* NT35510 寄存器地址不同 */
+        dirReg = 0X3600;                        /* NT35510 寄存器地址不同 */
     }
 
     if (lcddev.id == 0X9341 || lcddev.id == 0X7789 || lcddev.id == 0x7796)
     {
-        regval |= 0X08;                         /* 9341/7789/7796 需设置 BGR 位 */
+        regValue |= 0X08;                       /* 9341/7789/7796 需设置 BGR 位 */
     }
 
-    lcd_write_reg(dirreg, regval);
+    lcd_write_reg(dirReg, regValue);
 
     if (lcddev.id != 0X1963)                    /* 1963 不需要坐标处理 */
     {
-        if (regval & 0X20)
+        if (regValue & 0X20)
         {
             if (lcddev.width < lcddev.height)   /* 交换 X,Y */
             {
-                temp = lcddev.width;
+                swapTemp = lcddev.width;
                 lcddev.width = lcddev.height;
-                lcddev.height = temp;
+                lcddev.height = swapTemp;
             }
         }
         else
         {
             if (lcddev.width > lcddev.height)
             {
-                temp = lcddev.width;
+                swapTemp = lcddev.width;
                 lcddev.width = lcddev.height;
-                lcddev.height = temp;
+                lcddev.height = swapTemp;
             }
         }
     }
@@ -419,8 +428,8 @@ void lcd_display_dir(uint8_t dir)
  */
 void lcd_set_window(uint16_t sx, uint16_t sy, uint16_t width, uint16_t height)
 {
-    uint16_t twidth = sx + width - 1;
-    uint16_t theight = sy + height - 1;
+    uint16_t winEndX = sx + width - 1;
+    uint16_t winEndY = sy + height - 1;
 
     if (lcddev.id == 0X1963 && lcddev.dir != 1)         /* 1963 竖屏特殊处理 */
     {
@@ -444,30 +453,30 @@ void lcd_set_window(uint16_t sx, uint16_t sy, uint16_t width, uint16_t height)
         lcd_wr_regno(lcddev.setxcmd + 1);
         lcd_wr_data(sx & 0XFF);
         lcd_wr_regno(lcddev.setxcmd + 2);
-        lcd_wr_data(twidth >> 8);
+        lcd_wr_data(winEndX >> 8);
         lcd_wr_regno(lcddev.setxcmd + 3);
-        lcd_wr_data(twidth & 0XFF);
+        lcd_wr_data(winEndX & 0XFF);
         lcd_wr_regno(lcddev.setycmd);
         lcd_wr_data(sy >> 8);
         lcd_wr_regno(lcddev.setycmd + 1);
         lcd_wr_data(sy & 0XFF);
         lcd_wr_regno(lcddev.setycmd + 2);
-        lcd_wr_data(theight >> 8);
+        lcd_wr_data(winEndY >> 8);
         lcd_wr_regno(lcddev.setycmd + 3);
-        lcd_wr_data(theight & 0XFF);
+        lcd_wr_data(winEndY & 0XFF);
     }
     else                                                /* 其余 IC */
     {
         lcd_wr_regno(lcddev.setxcmd);
         lcd_wr_data(sx >> 8);
         lcd_wr_data(sx & 0XFF);
-        lcd_wr_data(twidth >> 8);
-        lcd_wr_data(twidth & 0XFF);
+        lcd_wr_data(winEndX >> 8);
+        lcd_wr_data(winEndX & 0XFF);
         lcd_wr_regno(lcddev.setycmd);
         lcd_wr_data(sy >> 8);
         lcd_wr_data(sy & 0XFF);
-        lcd_wr_data(theight >> 8);
-        lcd_wr_data(theight & 0XFF);
+        lcd_wr_data(winEndY >> 8);
+        lcd_wr_data(winEndY & 0XFF);
     }
 }
 
@@ -477,22 +486,92 @@ void lcd_set_window(uint16_t sx, uint16_t sy, uint16_t width, uint16_t height)
  */
 void HAL_SRAM_MspInit(SRAM_HandleTypeDef *hsram)
 {
-    GPIO_InitTypeDef gpio_init_struct = {0};
+    GPIO_InitTypeDef gpioInitStruct = {0};
 
     __HAL_RCC_FSMC_CLK_ENABLE();
     __HAL_RCC_GPIOD_CLK_ENABLE();
     __HAL_RCC_GPIOE_CLK_ENABLE();
 
     /* FSMC 数据引脚 */
-    gpio_init_struct.Mode = GPIO_MODE_AF_PP;
-    gpio_init_struct.Pull = GPIO_PULLUP;
-    gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;
+    gpioInitStruct.Mode = GPIO_MODE_AF_PP;
+    gpioInitStruct.Pull = GPIO_PULLUP;
+    gpioInitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
 
-    gpio_init_struct.Pin = LCD_FSMC_D_GPIO_PINS;
-    HAL_GPIO_Init(LCD_FSMC_D_GPIO_PORT, &gpio_init_struct);
+    gpioInitStruct.Pin = LCD_FSMC_D_GPIO_PINS;
+    HAL_GPIO_Init(LCD_FSMC_D_GPIO_PORT, &gpioInitStruct);
 
-    gpio_init_struct.Pin = LCD_FSMC_E_GPIO_PINS;
-    HAL_GPIO_Init(LCD_FSMC_E_GPIO_PORT, &gpio_init_struct);
+    gpioInitStruct.Pin = LCD_FSMC_E_GPIO_PINS;
+    HAL_GPIO_Init(LCD_FSMC_E_GPIO_PORT, &gpioInitStruct);
+}
+
+/* ID 探测表项 */
+typedef struct
+{
+    uint16_t cmd;       /* ID 读取指令 */
+    uint16_t id;        /* 匹配的 ID */
+    uint16_t altId;     /* 部分 IC 返回的替代 ID（0 表示无） */
+    uint16_t altTo;     /* 替代 ID 转换成的标准 ID */
+} lcd_id_probe_t;
+
+/* 第一批标准探测（4 读时序） */
+static const lcd_id_probe_t s_idProbeGroup1[] =
+{
+    {0XD3, 0X9341, 0,      0     },
+    {0X04, 0X7789, 0X8552, 0X7789},
+    {0XD4, 0X5310, 0,      0     },
+    {0XD3, 0X7796, 0,      0     },
+};
+
+/* 第二批探测（NT35510 特殊探测之后） */
+static const lcd_id_probe_t s_idProbeGroup2[] =
+{
+    {0XD3, 0X9806, 0,      0     },
+    {0XA1, 0X1963, 0X5761, 0X1963},
+};
+
+/**
+ * @brief   按标准 4 读时序读取 ID：写指令 -> dummy read -> 读高字节 -> 读低字节
+ * @param   cmd : ID 读取指令
+ * @retval  读取到的 ID
+ */
+static uint16_t lcd_read_id(uint16_t cmd)
+{
+    uint16_t id;
+
+    lcd_wr_regno(cmd);
+    id = lcd_rd_data();     /* dummy read */
+    id = lcd_rd_data();     /* 读到 0X00 */
+    id = lcd_rd_data();     /* 读 ID 高字节 */
+    id <<= 8;
+    id |= lcd_rd_data();    /* 读 ID 低字节 */
+
+    return id;
+}
+
+/**
+ * @brief   依次执行 ID 探测表，命中即返回
+ * @param   probes : 探测表
+ * @param   count  : 表项数量
+ * @retval  1 匹配成功；0 全部未匹配
+ */
+static uint8_t lcd_try_id_probes(const lcd_id_probe_t* probes, uint8_t count)
+{
+    for (uint8_t i = 0; i < count; i++)
+    {
+        lcddev.id = lcd_read_id(probes[i].cmd);
+
+        if (probes[i].altId && lcddev.id == probes[i].altId)
+        {
+            lcddev.id = probes[i].altTo;
+        }
+
+        if (lcddev.id == probes[i].id)
+        {
+            return 1;
+        }
+    }
+
+    return 0;
 }
 
 /**
@@ -500,9 +579,9 @@ void HAL_SRAM_MspInit(SRAM_HandleTypeDef *hsram)
  */
 void lcd_init(void)
 {
-    GPIO_InitTypeDef gpio_init_struct = {0};
-    FSMC_NORSRAM_TimingTypeDef fsmc_read_handle = {0};
-    FSMC_NORSRAM_TimingTypeDef fsmc_write_handle = {0};
+    GPIO_InitTypeDef gpioInitStruct = {0};
+    FSMC_NORSRAM_TimingTypeDef fsmcReadTiming = {0};
+    FSMC_NORSRAM_TimingTypeDef fsmcWriteTiming = {0};
 
     LCD_CS_GPIO_CLK_ENABLE();
     LCD_WR_GPIO_CLK_ENABLE();
@@ -511,140 +590,80 @@ void lcd_init(void)
     LCD_BL_GPIO_CLK_ENABLE();
 
     /* 控制信号引脚（复用推挽） */
-    gpio_init_struct.Mode = GPIO_MODE_AF_PP;
-    gpio_init_struct.Pull = GPIO_PULLUP;
-    gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;
+    gpioInitStruct.Mode = GPIO_MODE_AF_PP;
+    gpioInitStruct.Pull = GPIO_PULLUP;
+    gpioInitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
 
-    gpio_init_struct.Pin = LCD_CS_GPIO_PIN;
-    HAL_GPIO_Init(LCD_CS_GPIO_PORT, &gpio_init_struct);
+    gpioInitStruct.Pin = LCD_CS_GPIO_PIN;
+    HAL_GPIO_Init(LCD_CS_GPIO_PORT, &gpioInitStruct);
 
-    gpio_init_struct.Pin = LCD_WR_GPIO_PIN;
-    HAL_GPIO_Init(LCD_WR_GPIO_PORT, &gpio_init_struct);
+    gpioInitStruct.Pin = LCD_WR_GPIO_PIN;
+    HAL_GPIO_Init(LCD_WR_GPIO_PORT, &gpioInitStruct);
 
-    gpio_init_struct.Pin = LCD_RD_GPIO_PIN;
-    HAL_GPIO_Init(LCD_RD_GPIO_PORT, &gpio_init_struct);
+    gpioInitStruct.Pin = LCD_RD_GPIO_PIN;
+    HAL_GPIO_Init(LCD_RD_GPIO_PORT, &gpioInitStruct);
 
-    gpio_init_struct.Pin = LCD_RS_GPIO_PIN;
-    HAL_GPIO_Init(LCD_RS_GPIO_PORT, &gpio_init_struct);
+    gpioInitStruct.Pin = LCD_RS_GPIO_PIN;
+    HAL_GPIO_Init(LCD_RS_GPIO_PORT, &gpioInitStruct);
 
     /* 背光引脚（普通推挽输出） */
-    gpio_init_struct.Pin = LCD_BL_GPIO_PIN;
-    gpio_init_struct.Mode = GPIO_MODE_OUTPUT_PP;
-    HAL_GPIO_Init(LCD_BL_GPIO_PORT, &gpio_init_struct);
+    gpioInitStruct.Pin = LCD_BL_GPIO_PIN;
+    gpioInitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+    HAL_GPIO_Init(LCD_BL_GPIO_PORT, &gpioInitStruct);
 
     /* FSMC 配置：NE4，16 位数据宽度，读慢写快 */
-    g_sram_handle.Instance = FSMC_NORSRAM_DEVICE;
-    g_sram_handle.Extended = FSMC_NORSRAM_EXTENDED_DEVICE;
+    s_sramHandle.Instance = FSMC_NORSRAM_DEVICE;
+    s_sramHandle.Extended = FSMC_NORSRAM_EXTENDED_DEVICE;
 
-    g_sram_handle.Init.NSBank = FSMC_NORSRAM_BANK4;
-    g_sram_handle.Init.DataAddressMux = FSMC_DATA_ADDRESS_MUX_DISABLE;
-    g_sram_handle.Init.MemoryDataWidth = FSMC_NORSRAM_MEM_BUS_WIDTH_16;
-    g_sram_handle.Init.BurstAccessMode = FSMC_BURST_ACCESS_MODE_DISABLE;
-    g_sram_handle.Init.WaitSignalPolarity = FSMC_WAIT_SIGNAL_POLARITY_LOW;
-    g_sram_handle.Init.WaitSignalActive = FSMC_WAIT_TIMING_BEFORE_WS;
-    g_sram_handle.Init.WriteOperation = FSMC_WRITE_OPERATION_ENABLE;
-    g_sram_handle.Init.WaitSignal = FSMC_WAIT_SIGNAL_DISABLE;
-    g_sram_handle.Init.ExtendedMode = FSMC_EXTENDED_MODE_ENABLE;
-    g_sram_handle.Init.AsynchronousWait = FSMC_ASYNCHRONOUS_WAIT_DISABLE;
-    g_sram_handle.Init.WriteBurst = FSMC_WRITE_BURST_DISABLE;
+    s_sramHandle.Init.NSBank = FSMC_NORSRAM_BANK4;
+    s_sramHandle.Init.DataAddressMux = FSMC_DATA_ADDRESS_MUX_DISABLE;
+    s_sramHandle.Init.MemoryDataWidth = FSMC_NORSRAM_MEM_BUS_WIDTH_16;
+    s_sramHandle.Init.BurstAccessMode = FSMC_BURST_ACCESS_MODE_DISABLE;
+    s_sramHandle.Init.WaitSignalPolarity = FSMC_WAIT_SIGNAL_POLARITY_LOW;
+    s_sramHandle.Init.WaitSignalActive = FSMC_WAIT_TIMING_BEFORE_WS;
+    s_sramHandle.Init.WriteOperation = FSMC_WRITE_OPERATION_ENABLE;
+    s_sramHandle.Init.WaitSignal = FSMC_WAIT_SIGNAL_DISABLE;
+    s_sramHandle.Init.ExtendedMode = FSMC_EXTENDED_MODE_ENABLE;
+    s_sramHandle.Init.AsynchronousWait = FSMC_ASYNCHRONOUS_WAIT_DISABLE;
+    s_sramHandle.Init.WriteBurst = FSMC_WRITE_BURST_DISABLE;
 
     /* 读时序：DATAST=15，约 222ns（液晶 IC 读数据较慢） */
-    fsmc_read_handle.AddressSetupTime = 0;
-    fsmc_read_handle.AddressHoldTime = 0;
-    fsmc_read_handle.DataSetupTime = 15;
-    fsmc_read_handle.AccessMode = FSMC_ACCESS_MODE_A;
+    fsmcReadTiming.AddressSetupTime = 0;
+    fsmcReadTiming.AddressHoldTime = 0;
+    fsmcReadTiming.DataSetupTime = 15;
+    fsmcReadTiming.AccessMode = FSMC_ACCESS_MODE_A;
 
     /* 写时序：DATAST=1，约 28ns（部分 IC 写脉宽要求 50ns） */
-    fsmc_write_handle.AddressSetupTime = 0;
-    fsmc_write_handle.AddressHoldTime = 0;
-    fsmc_write_handle.DataSetupTime = 1;
-    fsmc_write_handle.AccessMode = FSMC_ACCESS_MODE_A;
+    fsmcWriteTiming.AddressSetupTime = 0;
+    fsmcWriteTiming.AddressHoldTime = 0;
+    fsmcWriteTiming.DataSetupTime = 1;
+    fsmcWriteTiming.AccessMode = FSMC_ACCESS_MODE_A;
 
-    HAL_SRAM_Init(&g_sram_handle, &fsmc_read_handle, &fsmc_write_handle);
+    HAL_SRAM_Init(&s_sramHandle, &fsmcReadTiming, &fsmcWriteTiming);
     systickDelay_ms(50);        /* FSMC 初始化后需等待一段时间 */
 
     /* 依次尝试读取各 IC 的 ID */
-    lcd_wr_regno(0XD3);
-    lcddev.id = lcd_rd_data();  /* dummy read */
-    lcddev.id = lcd_rd_data();  /* 读到 0X00 */
-    lcddev.id = lcd_rd_data();  /* 读到 0X93 */
-    lcddev.id <<= 8;
-    lcddev.id |= lcd_rd_data(); /* 读到 0X41 */
-
-    if (lcddev.id != 0X9341)    /* 非 9341，尝试 ST7789 */
+    if (!lcd_try_id_probes(s_idProbeGroup1, ARRAY_SIZE(s_idProbeGroup1)))
     {
-        lcd_wr_regno(0X04);
-        lcddev.id = lcd_rd_data();
-        lcddev.id = lcd_rd_data();
+        /* NT35510 特殊探测：需解锁寄存器页；C501 读 ID 后需延时等待复位完成 */
+        lcd_write_reg(0xF000, 0x0055);
+        lcd_write_reg(0xF001, 0x00AA);
+        lcd_write_reg(0xF002, 0x0052);
+        lcd_write_reg(0xF003, 0x0008);
+        lcd_write_reg(0xF004, 0x0001);
+
+        lcd_wr_regno(0xC500);           /* 读 ID 低 8 位 */
         lcddev.id = lcd_rd_data();
         lcddev.id <<= 8;
+
+        lcd_wr_regno(0xC501);           /* 读 ID 高 8 位（0XC501 是 1963 的软复位指令） */
         lcddev.id |= lcd_rd_data();
 
-        if (lcddev.id == 0X8552)    /* 8552 的 ID 转成 7789 */
+        systickDelay_ms(5);             /* 等待 1963 软复位完成 */
+
+        if (lcddev.id != 0x5510)
         {
-            lcddev.id = 0x7789;
-        }
-
-        if (lcddev.id != 0x7789)    /* 非 7789，尝试 NT35310 */
-        {
-            lcd_wr_regno(0xD4);
-            lcddev.id = lcd_rd_data();
-            lcddev.id = lcd_rd_data();
-            lcddev.id = lcd_rd_data();
-            lcddev.id <<= 8;
-            lcddev.id |= lcd_rd_data();
-
-            if (lcddev.id != 0x5310)    /* 非 35310，尝试 ST7796 */
-            {
-                lcd_wr_regno(0XD3);
-                lcddev.id = lcd_rd_data();
-                lcddev.id = lcd_rd_data();
-                lcddev.id = lcd_rd_data();
-                lcddev.id <<= 8;
-                lcddev.id |= lcd_rd_data();
-
-                if (lcddev.id != 0x7796)    /* 非 7796，尝试 NT35510 */
-                {
-                    lcd_write_reg(0xF000, 0x0055);
-                    lcd_write_reg(0xF001, 0x00AA);
-                    lcd_write_reg(0xF002, 0x0052);
-                    lcd_write_reg(0xF003, 0x0008);
-                    lcd_write_reg(0xF004, 0x0001);
-
-                    lcd_wr_regno(0xC500);       /* 读 ID 低 8 位 */
-                    lcddev.id = lcd_rd_data();
-                    lcddev.id <<= 8;
-
-                    lcd_wr_regno(0xC501);       /* 读 ID 高 8 位 */
-                    lcddev.id |= lcd_rd_data();
-
-                    systickDelay_ms(5);         /* 0XC501 是 1963 的软复位指令，等待复位完成 */
-
-                    if (lcddev.id != 0x5510)    /* 非 35510，尝试 ILI9806 */
-                    {
-                        lcd_wr_regno(0XD3);
-                        lcddev.id = lcd_rd_data();
-                        lcddev.id = lcd_rd_data();
-                        lcddev.id = lcd_rd_data();
-                        lcddev.id <<= 8;
-                        lcddev.id |= lcd_rd_data();
-
-                        if (lcddev.id != 0x9806)    /* 非 9806，尝试 SSD1963 */
-                        {
-                            lcd_wr_regno(0xA1);
-                            lcddev.id = lcd_rd_data();
-                            lcddev.id = lcd_rd_data();
-                            lcddev.id <<= 8;
-                            lcddev.id |= lcd_rd_data();
-
-                            if (lcddev.id == 0x5761)
-                            {
-                                lcddev.id = 0x1963;     /* 1963 的 ID 是 5761H，统一成 1963 */
-                            }
-                        }
-                    }
-                }
-            }
+            lcd_try_id_probes(s_idProbeGroup2, ARRAY_SIZE(s_idProbeGroup2));
         }
     }
 
@@ -693,12 +712,12 @@ void lcd_init(void)
  */
 void lcd_clear(uint16_t color)
 {
-    uint32_t totalpoint = (uint32_t)lcddev.width * lcddev.height;
+    uint32_t totalPoints = (uint32_t)lcddev.width * lcddev.height;
 
     lcd_set_cursor(0x00, 0x0000);
     lcd_write_ram_prepare();
 
-    for (uint32_t index = 0; index < totalpoint; index++)
+    while (totalPoints--)
     {
         LCD->LCD_RAM = color;
     }
@@ -708,20 +727,26 @@ void lcd_clear(uint16_t color)
  * @brief   在指定区域内填充单一颜色
  * @param   sx, sy, ex, ey : 矩形对角坐标
  * @param   color          : 填充颜色
+ * @note    算法优化：只设置一次窗口，GRAM 在窗口内自动换行，
+ *          命令开销由 O(行数×8) 降为 O(8)
  */
 void lcd_fill(uint16_t sx, uint16_t sy, uint16_t ex, uint16_t ey, uint32_t color)
 {
-    uint16_t xlen = ex - sx + 1;
+    uint32_t totalPoints;
 
-    for (uint16_t i = sy; i <= ey; i++)
+    if (ex < sx || ey < sy)
     {
-        lcd_set_cursor(sx, i);
-        lcd_write_ram_prepare();
+        return;             /* 坐标非法（原实现此处会因回绕画出乱码，此处直接忽略） */
+    }
 
-        for (uint16_t j = 0; j < xlen; j++)
-        {
-            LCD->LCD_RAM = color;
-        }
+    totalPoints = (uint32_t)(ex - sx + 1) * (ey - sy + 1);
+
+    lcd_set_window(sx, sy, ex - sx + 1, ey - sy + 1);
+    lcd_write_ram_prepare();
+
+    while (totalPoints--)
+    {
+        LCD->LCD_RAM = color;
     }
 }
 
@@ -729,73 +754,126 @@ void lcd_fill(uint16_t sx, uint16_t sy, uint16_t ex, uint16_t ey, uint32_t color
  * @brief   在指定区域内填充指定颜色数组（逐点）
  * @param   sx, sy, ex, ey : 矩形对角坐标
  * @param   color          : 颜色数组首地址
+ * @note    与 lcd_fill 相同：单次设窗口 + 连续写
  */
 void lcd_color_fill(uint16_t sx, uint16_t sy, uint16_t ex, uint16_t ey, uint16_t *color)
 {
-    uint16_t width = ex - sx + 1;
-    uint16_t height = ey - sy + 1;
+    uint32_t totalPoints;
 
-    for (uint16_t i = 0; i < height; i++)
+    if (ex < sx || ey < sy)
     {
-        lcd_set_cursor(sx, sy + i);
-        lcd_write_ram_prepare();
+        return;
+    }
 
-        for (uint16_t j = 0; j < width; j++)
-        {
-            LCD->LCD_RAM = color[i * width + j];
-        }
+    totalPoints = (uint32_t)(ex - sx + 1) * (ey - sy + 1);
+
+    lcd_set_window(sx, sy, ex - sx + 1, ey - sy + 1);
+    lcd_write_ram_prepare();
+
+    while (totalPoints--)
+    {
+        LCD->LCD_RAM = *color++;
     }
 }
 
 /**
- * @brief   画直线（Bresenham 算法）
+ * @brief   画直线（Bresenham 算法 + 水平段批量化）
+ * @param   x1, y1 : 起点坐标
+ * @param   x2, y2 : 终点坐标
+ * @param   color  : 线的颜色
+ * @note    算法优化：与逐点版本使用完全相同的 Bresenham 步进，
+ *          像素集合一致；连续同行像素合并为水平段一次写出，
+ *          命令开销由 O(像素数×8) 降为 O(水平段数×8)
  */
 void lcd_draw_line(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, uint16_t color)
 {
-    int xerr = 0, yerr = 0, delta_x, delta_y, distance;
-    int incx, incy, row, col;
+    int xerr = 0, yerr = 0, deltaX, deltaY, distance;
+    int incx, incy, curX, curY;
+    int runStartX, runEndX, runCol;
+    uint16_t runLen;
 
-    delta_x = x2 - x1;
-    delta_y = y2 - y1;
-    row = x1;
-    col = y1;
+    deltaX = (int)x2 - (int)x1;
+    deltaY = (int)y2 - (int)y1;
+    curX = x1;
+    curY = y1;
 
-    if (delta_x > 0) incx = 1;
-    else if (delta_x == 0) incx = 0;
+    if (deltaX > 0)
+    {
+        incx = 1;
+    }
+    else if (deltaX == 0)
+    {
+        incx = 0;
+    }
     else
     {
         incx = -1;
-        delta_x = -delta_x;
+        deltaX = -deltaX;
     }
 
-    if (delta_y > 0) incy = 1;
-    else if (delta_y == 0) incy = 0;
+    if (deltaY > 0)
+    {
+        incy = 1;
+    }
+    else if (deltaY == 0)
+    {
+        incy = 0;
+    }
     else
     {
         incy = -1;
-        delta_y = -delta_y;
+        deltaY = -deltaY;
     }
 
-    distance = (delta_x > delta_y) ? delta_x : delta_y;
+    distance = (deltaX > deltaY) ? deltaX : deltaY;
 
-    for (uint16_t t = 0; t <= distance + 1; t++)
+    /* 竖直线快路径：单列填充 */
+    if (incx == 0)
     {
-        lcd_draw_point(row, col, color);
-        xerr += delta_x;
-        yerr += delta_y;
+        lcd_fill(x1, (y1 < y2) ? y1 : y2, x1, (y1 > y2) ? y1 : y2, color);
+        return;
+    }
+
+    /* 通用路径：Bresenham 步进 + 水平段批量化（水平线自然退化为单段） */
+    runStartX = curX;
+    runEndX = curX;
+    runCol = curY;
+    runLen = 1;
+
+    for (uint16_t t = 1; t <= distance + 1; t++)
+    {
+        xerr += deltaX;
+        yerr += deltaY;
 
         if (xerr > distance)
         {
             xerr -= distance;
-            row += incx;
+            curX += incx;
         }
 
         if (yerr > distance)
         {
             yerr -= distance;
-            col += incy;
+            curY += incy;
+        }
+
+        if ((curY == runCol) && ((runEndX + incx) == curX))
+        {
+            runEndX = curX;     /* 同行且相邻，延长当前水平段 */
+            runLen++;
+        }
+        else
+        {
+            /* 写出上一水平段，另起新段 */
+            lcd_draw_hline((runStartX < runEndX) ? runStartX : runEndX, runCol, runLen, color);
+            runStartX = curX;
+            runEndX = curX;
+            runCol = curY;
+            runLen = 1;
         }
     }
+
+    lcd_draw_hline((runStartX < runEndX) ? runStartX : runEndX, runCol, runLen, color);
 }
 
 /**
@@ -825,7 +903,8 @@ void lcd_draw_rectangle(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, uint
 }
 
 /**
- * @brief   画圆（Bresenham 算法）
+ * @brief   画圆（Bresenham 算法，8 点对称描点）
+ * @note    圆轮廓不能按水平段批量化（对称点之间是圆内区域），保持逐点绘制
  */
 void lcd_draw_circle(uint16_t x0, uint16_t y0, uint8_t r, uint16_t color)
 {
@@ -862,17 +941,17 @@ void lcd_draw_circle(uint16_t x0, uint16_t y0, uint8_t r, uint16_t color)
  */
 void lcd_fill_circle(uint16_t x, uint16_t y, uint16_t r, uint16_t color)
 {
-    uint32_t imax = ((uint32_t)r * 707) / 1000 + 1;
-    uint32_t sqmax = (uint32_t)r * (uint32_t)r + (uint32_t)r / 2;
+    uint32_t iMax = ((uint32_t)r * 707) / 1000 + 1;
+    uint32_t sqMax = (uint32_t)r * (uint32_t)r + (uint32_t)r / 2;
     uint32_t xr = r;
 
     lcd_draw_hline(x - r, y, 2 * r, color);
 
-    for (uint32_t i = 1; i <= imax; i++)
+    for (uint32_t i = 1; i <= iMax; i++)
     {
-        if ((i * i + xr * xr) > sqmax)
+        if ((i * i + xr * xr) > sqMax)
         {
-            if (xr > imax)      /* 画外侧线 */
+            if (xr > iMax)      /* 画外侧线 */
             {
                 lcd_draw_hline(x - i + 1, y + xr, 2 * (i - 1), color);
                 lcd_draw_hline(x - i + 1, y - xr, 2 * (i - 1), color);
@@ -893,28 +972,28 @@ void lcd_fill_circle(uint16_t x, uint16_t y, uint16_t r, uint16_t color)
  * @param   size  : 字体大小 12/16/24/32
  * @param   mode  : 1 叠加显示；0 非叠加显示（背景用 g_back_color 填充）
  * @param   color : 字符颜色
- * @note    性能优化：逐列绘制，每列只设置一次 1×N 窗口，列内像素连续写 RAM，
- *          相比逐点 set_cursor 的实现，命令开销从 O(8×size) 降为 O(size)
+ * @note    逐列绘制：每列只设置一次 1×N 窗口，列内像素连续写 RAM，
+ *          命令开销 O(size)，远低于逐点绘制的 O(8×size)
  */
 void lcd_show_char(uint16_t x, uint16_t y, char chr, uint8_t size, uint8_t mode, uint16_t color)
 {
-    uint8_t *pfont;
-    uint16_t fit_rows;              /* 每列可绘制的行数 */
-    uint8_t bytes_per_col;          /* 每列占用的字节数 */
-    uint8_t cols;                   /* 总列数 */
+    uint8_t *pFont;
+    uint16_t fitRows;               /* 每列可绘制的行数 */
+    uint8_t bytesPerCol;            /* 每列占用的字节数 */
+    uint8_t colCount;               /* 总列数 */
     uint8_t clipped;                /* 是否被屏幕边界裁剪 */
 
-    cols = size / 2;
-    bytes_per_col = (size % 8) ? (size / 8 + 1) : (size / 8);
+    colCount = size / 2;
+    bytesPerCol = (size % 8) ? (size / 8 + 1) : (size / 8);
 
     chr = chr - ' ';                /* 字库从空格开始取模 */
 
     switch (size)
     {
-        case 12: pfont = (uint8_t *)asc2_1206[chr]; break;
-        case 16: pfont = (uint8_t *)asc2_1608[chr]; break;
-        case 24: pfont = (uint8_t *)asc2_2412[chr]; break;
-        case 32: pfont = (uint8_t *)asc2_3216[chr]; break;
+        case 12: pFont = (uint8_t *)asc2_1206[chr]; break;
+        case 16: pFont = (uint8_t *)asc2_1608[chr]; break;
+        case 24: pFont = (uint8_t *)asc2_2412[chr]; break;
+        case 32: pFont = (uint8_t *)asc2_3216[chr]; break;
         default: return;
     }
 
@@ -923,45 +1002,45 @@ void lcd_show_char(uint16_t x, uint16_t y, char chr, uint8_t size, uint8_t mode,
         return;
     }
 
-    fit_rows = (uint16_t)size;
+    fitRows = (uint16_t)size;
     clipped = 0;
     if (y + size > lcddev.height)
     {
-        fit_rows = lcddev.height - y;
+        fitRows = lcddev.height - y;
         clipped = 1;
     }
 
-    for (uint8_t col = 0; col < cols; col++)
+    for (uint8_t col = 0; col < colCount; col++)
     {
-        uint16_t x_pos = x + col;
-        uint16_t rows_remaining = fit_rows;
-        uint8_t done_column = 0;
+        uint16_t xPos = x + col;
+        uint16_t rowsRemaining = fitRows;
+        uint8_t columnDone = 0;
 
-        if (x_pos >= lcddev.width)
+        if (xPos >= lcddev.width)
         {
             return;                 /* x 越界，终止整个字符 */
         }
 
-        lcd_set_window(x_pos, y, 1, fit_rows);
+        lcd_set_window(xPos, y, 1, fitRows);
         lcd_write_ram_prepare();
 
-        for (uint8_t b = 0; (b < bytes_per_col) && (!done_column); b++)
+        for (uint8_t byteIdx = 0; (byteIdx < bytesPerCol) && (!columnDone); byteIdx++)
         {
-            uint8_t temp = pfont[col * bytes_per_col + b];
+            uint8_t fontByte = pFont[col * bytesPerCol + byteIdx];
 
             for (uint8_t bit = 0; bit < 8; bit++)
             {
-                if (rows_remaining == 0)
+                if (rowsRemaining == 0)
                 {
                     if (clipped)
                     {
                         return;     /* 被边界裁剪：终止整个字符 */
                     }
-                    done_column = 1;/* 本列画完，跳过填充位 */
+                    columnDone = 1; /* 本列画完，跳过填充位 */
                     break;
                 }
 
-                if (temp & 0x80)
+                if (fontByte & 0x80)
                 {
                     LCD->LCD_RAM = color;
                 }
@@ -971,55 +1050,45 @@ void lcd_show_char(uint16_t x, uint16_t y, char chr, uint8_t size, uint8_t mode,
                 }
                 /* 叠加模式：不写入，窗口自动递增保留原像素 */
 
-                temp <<= 1;
-                rows_remaining--;
+                fontByte <<= 1;
+                rowsRemaining--;
             }
         }
     }
-}
-
-/**
- * @brief   幂运算 m^n（内部函数）
- */
-static uint32_t lcd_pow(uint8_t m, uint8_t n)
-{
-    uint32_t result = 1;
-
-    while (n--)
-    {
-        result *= m;
-    }
-
-    return result;
 }
 
 /**
  * @brief   显示 len 位数字（高位 0 不显示）
  * @param   x, y : 起点坐标
  * @param   num  : 数值
- * @param   len  : 数字位数
+ * @param   len  : 数字位数（1~10）
  * @param   size : 字体大小 12/16/24/32
  */
 void lcd_show_num(uint16_t x, uint16_t y, uint32_t num, uint8_t len, uint8_t size, uint16_t color)
 {
-    uint8_t enshow = 0;
+    uint8_t enShow = 0;
+
+    if (len == 0 || len > 10)
+    {
+        return;
+    }
 
     for (uint8_t t = 0; t < len; t++)
     {
-        uint8_t temp = (num / lcd_pow(10, len - t - 1)) % 10;
+        uint8_t digit = (num / s_pow10Table[len - t - 1]) % 10;
 
-        if (enshow == 0 && t < (len - 1))
+        if (enShow == 0 && t < (len - 1))
         {
-            if (temp == 0)
+            if (digit == 0)
             {
                 lcd_show_char(x + (size / 2) * t, y, ' ', size, 0, color);   /* 空格占位 */
                 continue;
             }
 
-            enshow = 1;
+            enShow = 1;
         }
 
-        lcd_show_char(x + (size / 2) * t, y, temp + '0', size, 0, color);
+        lcd_show_char(x + (size / 2) * t, y, digit + '0', size, 0, color);
     }
 }
 
@@ -1027,21 +1096,26 @@ void lcd_show_num(uint16_t x, uint16_t y, uint32_t num, uint8_t len, uint8_t siz
  * @brief   扩展显示 len 位数字
  * @param   x, y : 起点坐标
  * @param   num  : 数值
- * @param   len  : 数字位数
+ * @param   len  : 数字位数（1~10）
  * @param   size : 字体大小 12/16/24/32
  * @param   mode : [7]:1 高位补 0，0 高位补空格；[0]:1 叠加显示，0 非叠加显示
  */
 void lcd_show_xnum(uint16_t x, uint16_t y, uint32_t num, uint8_t len, uint8_t size, uint8_t mode, uint16_t color)
 {
-    uint8_t enshow = 0;
+    uint8_t enShow = 0;
+
+    if (len == 0 || len > 10)
+    {
+        return;
+    }
 
     for (uint8_t t = 0; t < len; t++)
     {
-        uint8_t temp = (num / lcd_pow(10, len - t - 1)) % 10;
+        uint8_t digit = (num / s_pow10Table[len - t - 1]) % 10;
 
-        if (enshow == 0 && t < (len - 1))
+        if (enShow == 0 && t < (len - 1))
         {
-            if (temp == 0)
+            if (digit == 0)
             {
                 if (mode & 0X80)    /* 高位补 0 */
                 {
@@ -1055,10 +1129,10 @@ void lcd_show_xnum(uint16_t x, uint16_t y, uint32_t num, uint8_t len, uint8_t si
                 continue;
             }
 
-            enshow = 1;
+            enShow = 1;
         }
 
-        lcd_show_char(x + (size / 2) * t, y, temp + '0', size, mode & 0X01, color);
+        lcd_show_char(x + (size / 2) * t, y, digit + '0', size, mode & 0X01, color);
     }
 }
 
@@ -1072,7 +1146,7 @@ void lcd_show_xnum(uint16_t x, uint16_t y, uint32_t num, uint8_t len, uint8_t si
  */
 void lcd_show_string(uint16_t x, uint16_t y, uint16_t width, uint16_t height, uint8_t size, char *p, uint16_t color)
 {
-    uint8_t x0 = x;
+    uint8_t startX = x;
     width += x;
     height += y;
 
@@ -1080,7 +1154,7 @@ void lcd_show_string(uint16_t x, uint16_t y, uint16_t width, uint16_t height, ui
     {
         if (x >= width)
         {
-            x = x0;
+            x = startX;
             y += size;
         }
 

@@ -30,15 +30,15 @@ status_t drv_led_init(void)
     BSP_LED0_CLK_ENABLE();
     BSP_LED1_CLK_ENABLE();
 
-    GPIO_InitTypeDef gpio_init_structure = {0};
-    gpio_init_structure.Mode = GPIO_MODE_OUTPUT_PP;
-    gpio_init_structure.Pull = GPIO_PULLUP;
-    gpio_init_structure.Speed = GPIO_SPEED_FREQ_HIGH;
+    GPIO_InitTypeDef gpioInitStruct = {0};
+    gpioInitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+    gpioInitStruct.Pull = GPIO_PULLUP;
+    gpioInitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
 
     for (uint8_t i = 0; i < DRV_LED_ID_MAX; i++)
     {
-        gpio_init_structure.Pin = s_led_table[i].pin;
-        HAL_GPIO_Init(s_led_table[i].port, &gpio_init_structure);
+        gpioInitStruct.Pin = s_led_table[i].pin;
+        HAL_GPIO_Init(s_led_table[i].port, &gpioInitStruct);
     }
 
     drv_led_off(DRV_LED_ID_0);
@@ -55,7 +55,7 @@ status_t drv_led_init(void)
  */
 status_t drv_led_set_state(led_id_t id, led_state_t state)
 {
-    GPIO_PinState pin_state;
+    GPIO_PinState pinState;
 
     if (id >= DRV_LED_ID_MAX)
     {
@@ -67,11 +67,11 @@ status_t drv_led_set_state(led_id_t id, led_state_t state)
     switch (state)
     {
         case DRV_LED_STATE_ON:
-            pin_state = led->active_level ? GPIO_PIN_SET : GPIO_PIN_RESET;
+            pinState = led->active_level ? GPIO_PIN_SET : GPIO_PIN_RESET;
             break;
 
         case DRV_LED_STATE_OFF:
-            pin_state = led->active_level ? GPIO_PIN_RESET : GPIO_PIN_SET;
+            pinState = led->active_level ? GPIO_PIN_RESET : GPIO_PIN_SET;
             break;
 
         case DRV_LED_STATE_TOGGLE:
@@ -82,7 +82,7 @@ status_t drv_led_set_state(led_id_t id, led_state_t state)
             return STATUS_ERR_PARAM;
     }
 
-    HAL_GPIO_WritePin(led->port, led->pin, pin_state);
+    HAL_GPIO_WritePin(led->port, led->pin, pinState);
 
     return STATUS_OK;
 }

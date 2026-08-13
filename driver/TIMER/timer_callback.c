@@ -30,30 +30,30 @@ void timer_callback_init(void)
  */
 status_t timer_callback_register(timer_id_t timer_id, timer_callback_func_t callback)
 {
-    timer_callback_list_t* list;
+    timer_callback_list_t* pList;
 
     if (timer_id >= TIMER_ID_MAX || callback == NULL)
     {
         return STATUS_ERR_PARAM;
     }
 
-    list = &s_callback_lists[timer_id];
+    pList = &s_callback_lists[timer_id];
 
-    for (uint8_t i = 0; i < list->count; i++)
+    for (uint8_t i = 0; i < pList->count; i++)
     {
-        if (list->callbacks[i] == callback)
+        if (pList->callbacks[i] == callback)
         {
             return STATUS_OK;           /* 已注册 */
         }
     }
 
-    if (list->count >= TIMER_CALLBACK_MAX_COUNT)
+    if (pList->count >= TIMER_CALLBACK_MAX_COUNT)
     {
         return STATUS_ERR_NO_MEM;       /* 已满 */
     }
 
-    list->callbacks[list->count] = callback;
-    list->count++;
+    pList->callbacks[pList->count] = callback;
+    pList->count++;
 
     return STATUS_OK;
 }
@@ -66,25 +66,25 @@ status_t timer_callback_register(timer_id_t timer_id, timer_callback_func_t call
  */
 status_t timer_callback_unregister(timer_id_t timer_id, timer_callback_func_t callback)
 {
-    timer_callback_list_t* list;
+    timer_callback_list_t* pList;
 
     if (timer_id >= TIMER_ID_MAX || callback == NULL)
     {
         return STATUS_ERR_PARAM;
     }
 
-    list = &s_callback_lists[timer_id];
+    pList = &s_callback_lists[timer_id];
 
-    for (uint8_t i = 0; i < list->count; i++)
+    for (uint8_t i = 0; i < pList->count; i++)
     {
-        if (list->callbacks[i] == callback)
+        if (pList->callbacks[i] == callback)
         {
             /* 移除并将后续回调前移 */
-            for (uint8_t j = i; j < list->count - 1; j++)
+            for (uint8_t j = i; j < pList->count - 1; j++)
             {
-                list->callbacks[j] = list->callbacks[j + 1];
+                pList->callbacks[j] = pList->callbacks[j + 1];
             }
-            list->count--;
+            pList->count--;
             return STATUS_OK;
         }
     }
@@ -98,20 +98,20 @@ status_t timer_callback_unregister(timer_id_t timer_id, timer_callback_func_t ca
  */
 void timer_callback_execute(timer_id_t timer_id)
 {
-    timer_callback_list_t* list;
+    timer_callback_list_t* pList;
 
     if (timer_id >= TIMER_ID_MAX)
     {
         return;
     }
 
-    list = &s_callback_lists[timer_id];
+    pList = &s_callback_lists[timer_id];
 
-    for (uint8_t i = 0; i < list->count; i++)
+    for (uint8_t i = 0; i < pList->count; i++)
     {
-        if (list->callbacks[i] != NULL)
+        if (pList->callbacks[i] != NULL)
         {
-            list->callbacks[i]();
+            pList->callbacks[i]();
         }
     }
 }

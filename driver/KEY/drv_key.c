@@ -24,48 +24,48 @@ volatile drv_key_ctrl_block_t drv_key_ctrl_block[DRV_KEY_ID_MAX] =
 
 /**
  * @brief   单按键状态机检测（在定时器中断中调用）
- * @param   p_ctrl_block : 按键控制块指针
+ * @param   pCtrlBlock : 按键控制块指针
  */
-static void key_detect(drv_key_ctrl_block_t* p_ctrl_block)
+static void key_detect(drv_key_ctrl_block_t* pCtrlBlock)
 {
     /* 直读 IDR 寄存器（GPIO_PIN_x 与 IDR 位一一对应），省去 HAL 调用开销 */
-    uint8_t pin_level = (p_ctrl_block->gpio_port->IDR & p_ctrl_block->gpio_pin) ? 1 : 0;
+    uint8_t pinLevel = (pCtrlBlock->gpio_port->IDR & pCtrlBlock->gpio_pin) ? 1 : 0;
     uint32_t now = HAL_GetTick();
 
-    if (pin_level == p_ctrl_block->active_level)                    /* 按下 */
+    if (pinLevel == pCtrlBlock->active_level)                   /* 按下 */
     {
-        if (p_ctrl_block->key_state != 1)                           /* 释放 -> 按下 */
+        if (pCtrlBlock->key_state != 1)                         /* 释放 -> 按下 */
         {
-            p_ctrl_block->press_time = now;
-            p_ctrl_block->key_state = 1;
-            p_ctrl_block->long_press_trigger = 0;                   /* 重置长按标志 */
+            pCtrlBlock->press_time = now;
+            pCtrlBlock->key_state = 1;
+            pCtrlBlock->long_press_trigger = 0;                 /* 重置长按标志 */
         }
 
-        uint32_t press_duration = now - p_ctrl_block->press_time;
+        uint32_t pressDuration = now - pCtrlBlock->press_time;
 
-        if ((press_duration >= KEY_LONG_PRESS_TIME) && (!p_ctrl_block->long_press_trigger))
+        if ((pressDuration >= KEY_LONG_PRESS_TIME) && (!pCtrlBlock->long_press_trigger))
         {
-            p_ctrl_block->key_event = DRV_KEY_EVENT_LONG_PRESS_TRIGGER;
-            p_ctrl_block->long_press_trigger = 1;
+            pCtrlBlock->key_event = DRV_KEY_EVENT_LONG_PRESS_TRIGGER;
+            pCtrlBlock->long_press_trigger = 1;
         }
         /* 短按事件等释放后再判定 */
     }
-    else                                                            /* 释放 */
+    else                                                        /* 释放 */
     {
-        if (p_ctrl_block->key_state == 1)                           /* 按下 -> 释放 */
+        if (pCtrlBlock->key_state == 1)                         /* 按下 -> 释放 */
         {
-            uint32_t press_duration = now - p_ctrl_block->press_time;
+            uint32_t pressDuration = now - pCtrlBlock->press_time;
 
-            if ((press_duration >= DEBOUNCE_TIME) &&
-                (press_duration < KEY_LONG_PRESS_TIME) &&
-                (!p_ctrl_block->long_press_trigger))                /* 长按过的按键不再产生短按事件 */
+            if ((pressDuration >= DEBOUNCE_TIME) &&
+                (pressDuration < KEY_LONG_PRESS_TIME) &&
+                (!pCtrlBlock->long_press_trigger))              /* 长按过的按键不再产生短按事件 */
             {
-                p_ctrl_block->key_event = DRV_KEY_EVENT_PRESS;
+                pCtrlBlock->key_event = DRV_KEY_EVENT_PRESS;
             }
         }
 
-        p_ctrl_block->key_state = 0;
-        p_ctrl_block->long_press_trigger = 0;
+        pCtrlBlock->key_state = 0;
+        pCtrlBlock->long_press_trigger = 0;
     }
 }
 
@@ -89,23 +89,23 @@ static void key_msp_init(void)
     BSP_KEY1_CLK_ENABLE();
     BSP_WKUP_CLK_ENABLE();
 
-    GPIO_InitTypeDef GPIO_InitStructure = {0};
+    GPIO_InitTypeDef gpioInitStruct = {0};
 
     /* KEY0 */
-    GPIO_InitStructure.Pin = BSP_KEY0_PIN;
-    GPIO_InitStructure.Mode = GPIO_MODE_INPUT;
-    GPIO_InitStructure.Pull = GPIO_PULLUP;
-    GPIO_InitStructure.Speed = GPIO_SPEED_FREQ_HIGH;
-    HAL_GPIO_Init(BSP_KEY0_PORT, &GPIO_InitStructure);
+    gpioInitStruct.Pin = BSP_KEY0_PIN;
+    gpioInitStruct.Mode = GPIO_MODE_INPUT;
+    gpioInitStruct.Pull = GPIO_PULLUP;
+    gpioInitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+    HAL_GPIO_Init(BSP_KEY0_PORT, &gpioInitStruct);
 
     /* KEY1 */
-    GPIO_InitStructure.Pin = BSP_KEY1_PIN;
-    HAL_GPIO_Init(BSP_KEY1_PORT, &GPIO_InitStructure);
+    gpioInitStruct.Pin = BSP_KEY1_PIN;
+    HAL_GPIO_Init(BSP_KEY1_PORT, &gpioInitStruct);
 
     /* WKUP */
-    GPIO_InitStructure.Pin = BSP_WKUP_PIN;
-    GPIO_InitStructure.Pull = GPIO_PULLDOWN;
-    HAL_GPIO_Init(BSP_WKUP_PORT, &GPIO_InitStructure);
+    gpioInitStruct.Pin = BSP_WKUP_PIN;
+    gpioInitStruct.Pull = GPIO_PULLDOWN;
+    HAL_GPIO_Init(BSP_WKUP_PORT, &gpioInitStruct);
 }
 
 /**

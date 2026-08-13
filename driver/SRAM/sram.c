@@ -4,7 +4,8 @@
  * @note    1. 引脚/片选配置见 bsp/bsp_sram.h，换板只需改 BSP 层
  *          2. FSMC 数据总线初始化由 HAL_SRAM_Init 回调完成（见 lcd.c 的 HAL_SRAM_MspInit），
  *             本文件同时直接初始化数据/地址总线引脚，保证单独编译本模块也可用
- *          3. 读写按 16 位对齐加速：FSMC 16 位总线下字节访问与半字访问占用相同的总线周期
+ *          3. 读写分级加速：双 4 字节对齐时按 32 位拷贝，否则按 16 位拷贝
+ *             （FSMC 16 位总线自动拆分 32 位事务，32 位路径可省一半循环指令）
  */
 #include "sram.h"
 
@@ -15,8 +16,8 @@ SRAM_HandleTypeDef g_sram_handler;
  */
 void sram_init(void)
 {
-    GPIO_InitTypeDef GPIO_Initure = {0};
-    FSMC_NORSRAM_TimingTypeDef fsmc_readwritetim = {0};
+    GPIO_InitTypeDef gpioInitStruct = {0};
+    FSMC_NORSRAM_TimingTypeDef fsmcTiming = {0};
 
     SRAM_CS_GPIO_CLK_ENABLE();
     SRAM_WR_GPIO_CLK_ENABLE();
@@ -28,31 +29,31 @@ void sram_init(void)
     __HAL_RCC_GPIOG_CLK_ENABLE();
 
     /* 控制信号：CS/WR/RD（复用推挽） */
-    GPIO_Initure.Mode = GPIO_MODE_AF_PP;
-    GPIO_Initure.Pull = GPIO_PULLUP;
-    GPIO_Initure.Speed = GPIO_SPEED_FREQ_HIGH;
+    gpioInitStruct.Mode = GPIO_MODE_AF_PP;
+    gpioInitStruct.Pull = GPIO_PULLUP;
+    gpioInitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
 
-    GPIO_Initure.Pin = SRAM_CS_GPIO_PIN;
-    HAL_GPIO_Init(SRAM_CS_GPIO_PORT, &GPIO_Initure);
+    gpioInitStruct.Pin = SRAM_CS_GPIO_PIN;
+    HAL_GPIO_Init(SRAM_CS_GPIO_PORT, &gpioInitStruct);
 
-    GPIO_Initure.Pin = SRAM_WR_GPIO_PIN;
-    HAL_GPIO_Init(SRAM_WR_GPIO_PORT, &GPIO_Initure);
+    gpioInitStruct.Pin = SRAM_WR_GPIO_PIN;
+    HAL_GPIO_Init(SRAM_WR_GPIO_PORT, &gpioInitStruct);
 
-    GPIO_Initure.Pin = SRAM_RD_GPIO_PIN;
-    HAL_GPIO_Init(SRAM_RD_GPIO_PORT, &GPIO_Initure);
+    gpioInitStruct.Pin = SRAM_RD_GPIO_PIN;
+    HAL_GPIO_Init(SRAM_RD_GPIO_PORT, &gpioInitStruct);
 
     /* 数据/地址总线（FSMC_Dx/FSMC_Ax） */
-    GPIO_Initure.Pin = SRAM_FSMC_D_GPIO_PINS;
-    HAL_GPIO_Init(SRAM_FSMC_D_GPIO_PORT, &GPIO_Initure);
+    gpioInitStruct.Pin = SRAM_FSMC_D_GPIO_PINS;
+    HAL_GPIO_Init(SRAM_FSMC_D_GPIO_PORT, &gpioInitStruct);
 
-    GPIO_Initure.Pin = SRAM_FSMC_E_GPIO_PINS;
-    HAL_GPIO_Init(SRAM_FSMC_E_GPIO_PORT, &GPIO_Initure);
+    gpioInitStruct.Pin = SRAM_FSMC_E_GPIO_PINS;
+    HAL_GPIO_Init(SRAM_FSMC_E_GPIO_PORT, &gpioInitStruct);
 
-    GPIO_Initure.Pin = SRAM_FSMC_F_GPIO_PINS;
-    HAL_GPIO_Init(SRAM_FSMC_F_GPIO_PORT, &GPIO_Initure);
+    gpioInitStruct.Pin = SRAM_FSMC_F_GPIO_PINS;
+    HAL_GPIO_Init(SRAM_FSMC_F_GPIO_PORT, &gpioInitStruct);
 
-    GPIO_Initure.Pin = SRAM_FSMC_G_GPIO_PINS;
-    HAL_GPIO_Init(SRAM_FSMC_G_GPIO_PORT, &GPIO_Initure);
+    gpioInitStruct.Pin = SRAM_FSMC_G_GPIO_PINS;
+    HAL_GPIO_Init(SRAM_FSMC_G_GPIO_PORT, &gpioInitStruct);
 
     /* FSMC 配置：16 位数据宽度，模式 A */
     g_sram_handler.Instance = FSMC_NORSRAM_DEVICE;
@@ -76,17 +77,17 @@ void sram_init(void)
 
     /* 时序（HCLK=72MHz，1 周期 ≈ 13.9ns）：
      * ADDSET=0（1 个 HCLK），DATAST=1（2 个 HCLK），模式 A */
-    fsmc_readwritetim.AddressSetupTime = 0x00;
-    fsmc_readwritetim.AddressHoldTime = 0x00;
-    fsmc_readwritetim.DataSetupTime = 0x01;
-    fsmc_readwritetim.BusTurnAroundDuration = 0x00;
-    fsmc_readwritetim.AccessMode = FSMC_ACCESS_MODE_A;
+    fsmcTiming.AddressSetupTime = 0x00;
+    fsmcTiming.AddressHoldTime = 0x00;
+    fsmcTiming.DataSetupTime = 0x01;
+    fsmcTiming.BusTurnAroundDuration = 0x00;
+    fsmcTiming.AccessMode = FSMC_ACCESS_MODE_A;
 
-    HAL_SRAM_Init(&g_sram_handler, &fsmc_readwritetim, &fsmc_readwritetim);
+    HAL_SRAM_Init(&g_sram_handler, &fsmcTiming, &fsmcTiming);
 }
 
 /**
- * @brief   向 SRAM 指定地址写入指定长度数据（16 位对齐加速）
+ * @brief   向 SRAM 指定地址写入指定长度数据
  * @param   pbuf    : 数据源
  * @param   addr    : 写入起始地址
  * @param   datalen : 写入字节数
@@ -96,13 +97,29 @@ void sram_write(uint8_t *pbuf, uint32_t addr, uint32_t datalen)
     volatile uint8_t *dst8 = (volatile uint8_t *)(SRAM_BASE_ADDR + addr);
 
     /* 头部字节对齐到偶地址 */
-    while ((datalen != 0) && ((uint32_t)dst8 & 1U))
+    while (datalen && ((uint32_t)dst8 & 1U))
     {
         *dst8++ = *pbuf++;
         datalen--;
     }
 
-    /* 主体 16 位拷贝：目的地址已对齐；源地址允许非对齐（M3 支持普通内存非对齐访问） */
+    /* 双 4 字节对齐时按 32 位拷贝（16 位总线自动拆分为 2 次半字事务） */
+    if ((((uint32_t)dst8 & 3U) == 0) && (((uint32_t)pbuf & 3U) == 0))
+    {
+        volatile uint32_t *dst32 = (volatile uint32_t *)dst8;
+        uint32_t *src32 = (uint32_t *)pbuf;
+
+        while (datalen >= 4)
+        {
+            *dst32++ = *src32++;
+            datalen -= 4;
+        }
+
+        dst8 = (volatile uint8_t *)dst32;
+        pbuf = (uint8_t *)src32;
+    }
+
+    /* 主体 16 位拷贝：目的地址已偶对齐；源允许非对齐（M3 支持普通内存非对齐访问） */
     volatile uint16_t *dst16 = (volatile uint16_t *)dst8;
     uint16_t *src16 = (uint16_t *)pbuf;
 
@@ -115,15 +132,14 @@ void sram_write(uint8_t *pbuf, uint32_t addr, uint32_t datalen)
     /* 尾部剩余字节 */
     dst8 = (volatile uint8_t *)dst16;
     pbuf = (uint8_t *)src16;
-    while (datalen != 0)
+    while (datalen--)
     {
         *dst8++ = *pbuf++;
-        datalen--;
     }
 }
 
 /**
- * @brief   从 SRAM 指定地址读取指定长度数据（16 位对齐加速）
+ * @brief   从 SRAM 指定地址读取指定长度数据
  * @param   pbuf    : 数据目的
  * @param   addr    : 读取起始地址
  * @param   datalen : 读取字节数
@@ -133,10 +149,26 @@ void sram_read(uint8_t *pbuf, uint32_t addr, uint32_t datalen)
     volatile uint8_t *src8 = (volatile uint8_t *)(SRAM_BASE_ADDR + addr);
 
     /* 头部字节对齐到偶地址 */
-    while ((datalen != 0) && ((uint32_t)src8 & 1U))
+    while (datalen && ((uint32_t)src8 & 1U))
     {
         *pbuf++ = *src8++;
         datalen--;
+    }
+
+    /* 双 4 字节对齐时按 32 位拷贝 */
+    if ((((uint32_t)src8 & 3U) == 0) && (((uint32_t)pbuf & 3U) == 0))
+    {
+        volatile uint32_t *src32 = (volatile uint32_t *)src8;
+        uint32_t *dst32 = (uint32_t *)pbuf;
+
+        while (datalen >= 4)
+        {
+            *dst32++ = *src32++;
+            datalen -= 4;
+        }
+
+        src8 = (volatile uint8_t *)src32;
+        pbuf = (uint8_t *)dst32;
     }
 
     /* 主体 16 位拷贝 */
@@ -152,10 +184,9 @@ void sram_read(uint8_t *pbuf, uint32_t addr, uint32_t datalen)
     /* 尾部剩余字节 */
     src8 = (volatile uint8_t *)src16;
     pbuf = (uint8_t *)dst16;
-    while (datalen != 0)
+    while (datalen--)
     {
         *pbuf++ = *src8++;
-        datalen--;
     }
 }
 

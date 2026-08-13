@@ -1,212 +1,192 @@
 /**
-  ******************************************************************************
-  * @file       system_hal.c
-  * @author     czzzlq
-  * @version    V0.1
-  * @date       2025Äê12ÔÂ13ÈÕ
-  * @brief      systemÇı¶¯
-  * @attention  ½ö¹©Ñ§Ï°Ê¹ÓÃ
-  * @note       ½öÊÊÓÃÓÚSTM32F103ZET6
-  * @version    
-  *             -V0.1
-  ******************************************************************************
-**/
+ * @file    system_hal.c
+ * @brief   ç³»ç»Ÿæ—¶é’Ÿä¸æ ¸å¿ƒåŠŸèƒ½å®ç°ï¼ˆHSE + PLLï¼Œ72MHzï¼‰
+ */
 #include "system_hal.h"
 
-/*
-    Õë¶ÔSTM32F03XET6¶¨ÒåÄÚ´æÏà¹ØµÄºê
-*/
-#define FLASH_SIZE  (512 * 1024U)
-#define RAM_BASE    0X20000000U     //RAMÆğÊ¼µØÖ·
-#define RAM_SIZE    (64 * 1024U)
+/* STM32F103ZET6 å­˜å‚¨ç›¸å…³å¸¸é‡ */
+#define FLASH_SIZE      (512 * 1024U)   /* Flash å¤§å° */
+#define RAM_BASE        0X20000000U     /* RAM èµ·å§‹åœ°å€ */
+#define RAM_SIZE        (64 * 1024U)    /* RAM å¤§å°ï¼ˆå†…éƒ¨ SRAMï¼‰ */
 
-static SystemClockConfig_t g_systemClockConfigStruct;   //ÎÄ¼şË½ÓĞ±äÁ¿
+/* F1 ç³»åˆ— 96 ä½å”¯ä¸€ ID åŸºåœ°å€ */
+#define UID_BASE_ADDR   0x1FFFF7E8U
+
+static SystemClockConfig_t s_clockConfig;
 
 /**
- * @brief   Ê¹ÄÜHSEÊ±ÖÓ
- * @param   NULL
- * @retval  NULL
+ * @brief   ä½¿èƒ½ HSE å¤–éƒ¨æ™¶æŒ¯å¹¶ç­‰å¾…å°±ç»ª
  */
-static SYSTEM_INLINE void systemCoreEnableHSE(void){
-    RCC->CR |= RCC_CR_HSEON;    //¿ªÆôHSEÕñµ´Æ÷
-    while(!(RCC->CR & RCC_CR_HSERDY));  //Ñ­»·¼ìÑéHSRONÎ»
-}
-
-static SYSTEM_INLINE void systemCoreEnablePLL(uint8_t pllMultiplier){
-    // 1. ÏÈ½ûÓÃPLL£¨¹Ø¼ü²½Öè£ºÈ·±£PLL´¦ÓÚ¹Ø±Õ×´Ì¬²ÅÄÜĞŞ¸Ä²ÎÊı£©
-    RCC->CR &= ~RCC_CR_PLLON;  // Çå³ıPLLONÎ»£¬½ûÓÃPLL
-    while (RCC->CR & RCC_CR_PLLRDY);  // µÈ´ıPLLRDYÎ»ÇåÁã£¨È·ÈÏPLLÒÑ¹Ø±Õ£©
-
-    // 2. ĞŞ¸ÄPLL²ÎÊı£¨±¶ÆµÏµÊı¡¢Ê±ÖÓÔ´£©
-    RCC->CFGR &= ~RCC_CFGR_PLLMULL;   // Çå³ı¾ÉµÄ±¶ÆµÅäÖÃ
-    RCC->CFGR |= (pllMultiplier - 2) << 18;  // ÉèÖÃĞÂµÄ±¶ÆµÏµÊı£¨Î»Öµ=±¶ÆµÊı-2£©
-    RCC->CFGR |= RCC_CFGR_PLLSRC;   // Ñ¡ÔñHSE×÷ÎªPLLÊäÈëÊ±ÖÓ
-
-    // 3. ÖØĞÂÊ¹ÄÜPLL£¬²¢µÈ´ıËø¶¨
-    RCC->CR |= RCC_CR_PLLON;   // Ê¹ÄÜPLL
-    while (!(RCC->CR & RCC_CR_PLLRDY));  // µÈ´ıPLLËø¶¨£¨PLLRDYÖÃÎ»£©
+static SYSTEM_INLINE void systemCoreEnableHSE(void)
+{
+    RCC->CR |= RCC_CR_HSEON;
+    while (!(RCC->CR & RCC_CR_HSERDY));
 }
 
 /**
- * @brief   ½«ÏµÍ³Ê±ÖÓÇĞ»»ÖµPLLCLK
- * @param   NULL
- * @retval  NULL
+ * @brief   é…ç½®å¹¶ä½¿èƒ½ PLL
+ * @param   pllMultiplier : PLL å€é¢‘ç³»æ•°
  */
-static SYSTEM_INLINE void systemCoreSwitchToPll(void){
-    RCC->CFGR &= ~RCC_CFGR_SW;  //Çå³ıSWÎ»¶Î
-    RCC->CFGR |= RCC_CFGR_SW_PLL;   //ÉèÖÃSWÎ»¶Î£¬½«PLLÊä³ö×÷ÎªÏµÍ³Ê±ÖÓ
-    while((RCC->CFGR & RCC_CFGR_SWS) != RCC_CFGR_SW_PLL);   //¶ÁÈ¡SWSÎ»¶Î¼ìÑéSWÎ»¶Î
+static SYSTEM_INLINE void systemCoreEnablePLL(uint8_t pllMultiplier)
+{
+    /* å…ˆå…³é—­ PLLï¼Œç¡®ä¿ä¿®æ”¹å‚æ•°æ—¶ PLL å¤„äºåœæ­¢çŠ¶æ€ */
+    RCC->CR &= ~RCC_CR_PLLON;
+    while (RCC->CR & RCC_CR_PLLRDY);
+
+    /* ä¿®æ”¹å€é¢‘ç³»æ•°ä¸æ—¶é’Ÿæºï¼ˆHSEï¼‰ */
+    RCC->CFGR &= ~RCC_CFGR_PLLMULL;
+    RCC->CFGR |= (pllMultiplier - 2) << 18;     /* ä½å€¼ = å€é¢‘ç³»æ•° - 2 */
+    RCC->CFGR |= RCC_CFGR_PLLSRC;
+
+    /* ä½¿èƒ½ PLL å¹¶ç­‰å¾…é”å®š */
+    RCC->CR |= RCC_CR_PLLON;
+    while (!(RCC->CR & RCC_CR_PLLRDY));
 }
 
 /**
- * @brief   ÅäÖÃÕñµ´Æ÷ºÍÊ±ÖÓÊ÷
- * @param   NULL
- * @retval  NULL
+ * @brief   å°†ç³»ç»Ÿæ—¶é’Ÿåˆ‡æ¢åˆ° PLL è¾“å‡º
  */
-static void systemCoreClockInit(uint32_t pllMultipler){
-    RCC_OscInitTypeDef RCC_OscInitStructure = {0};                  //OscÕñµ´Æ÷³õÊ¼»¯ÅäÖÃ
-    RCC_ClkInitTypeDef RCC_ClkInitStructure = {0};                  //Ê±ÖÓÊ÷³õÊ¼»¯ÅäÖÃ
-
-    //ÅäÖÃHSE
-    RCC_OscInitStructure.OscillatorType = RCC_OSCILLATORTYPE_HSE;   //ÅäÖÃHSEÕñµ´Æ÷
-    RCC_OscInitStructure.HSEState       = RCC_HSE_ON;               //¿ªÆôHSEÕñµ´Æ÷
-    RCC_OscInitStructure.HSEPredivValue = RCC_HSE_PREDIV_DIV1;      //HSEÉÏµçÄ¬ÈÏ²»·ÖÆµ
-    RCC_OscInitStructure.PLL.PLLState   = RCC_PLL_ON;               //¿ªÆôPLL
-    RCC_OscInitStructure.PLL.PLLSource  = RCC_PLLSOURCE_HSE;        //PLLµÄÊ±ÖÓÔ´ÎªHSE
-    RCC_OscInitStructure.PLL.PLLMUL     = pllMultipler;             //PLL±¶ÆµÏµÊı
-    HAL_RCC_OscConfig(&RCC_OscInitStructure);                       //³õÊ¼»¯RCCÕñµ´Æ÷
-
-    //ÅäÖÃÊ±ÖÓÊ÷
-    RCC_ClkInitStructure.ClockType = RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_HCLK | 
-                                    RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;            
-    RCC_ClkInitStructure.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;    //½«PLLCLKÉèÖÃÎªÏµÍ³Ê±ÖÓÔ´
-    RCC_ClkInitStructure.AHBCLKDivider = RCC_SYSCLK_DIV1;           //½«AHBÔ¤·ÖÆµÆ÷ÉèÖÃÎª1·ÖÆµ¼´²»·ÖÆµ
-    RCC_ClkInitStructure.APB1CLKDivider = RCC_HCLK_DIV2;            //APB1Ô¤·ÖÆµÆ÷ÉèÖÃÎª2·ÖÆµ
-    RCC_ClkInitStructure.APB2CLKDivider = RCC_HCLK_DIV1;            //APB2Ô¤·ÖÆµÉèÖÃÎª1·ÖÆµ
-    HAL_RCC_ClockConfig(&RCC_ClkInitStructure,FLASH_LATENCY_2);
-
-    //¸üĞÂÅäÖÃ
-    g_systemClockConfigStruct.pll_multipliter = pllMultipler;
-    g_systemClockConfigStruct.system_freq = HSE_VALUE * pllMultipler;
-    g_systemClockConfigStruct.hclk_freq = g_systemClockConfigStruct.system_freq;
-    g_systemClockConfigStruct.pclk1_freq = g_systemClockConfigStruct.system_freq / 2;
-    g_systemClockConfigStruct.pclk2_freq = g_systemClockConfigStruct.system_freq;
+static SYSTEM_INLINE void systemCoreSwitchToPll(void)
+{
+    RCC->CFGR &= ~RCC_CFGR_SW;
+    RCC->CFGR |= RCC_CFGR_SW_PLL;
+    while ((RCC->CFGR & RCC_CFGR_SWS) != RCC_CFGR_SW_PLL);
 }
 
 /**
- * @brief   ÏµÍ³³õÊ¼»¯
- * @param   NULL
- * @retval  NULL
+ * @brief   ç³»ç»Ÿæ—¶é’Ÿåˆå§‹åŒ–ï¼ˆHSE -> PLL -> æ€»çº¿é¢„åˆ†é¢‘ï¼‰
+ * @param   pllMultipler : PLL å€é¢‘ç³»æ•°ï¼ˆ9 è¡¨ç¤º 8MHz Ã— 9 = 72MHzï¼‰
  */
-void systemCoreInit(void){
-    HAL_Init(); //HAL¿â³õÊ¼»¯
-    systemCoreClockInit(RCC_PLL_MUL9);  //ÅäÖÃÏµÍ³Ê±ÖÓÎª72MHz
-    HAL_SYSTICK_Config(HAL_RCC_GetHCLKFreq() / 1000);   //ÅäÖÃSysTickÏà¹Ø¼Ä´æÆ÷£¬³õÊ¼»¯SysTickÊ±»ù
-    SystemCoreClockUpdate();    //ÅäÖÃÊ±ÖÓÊ÷±ØĞë¸üĞÂÏµÍ³Ê±ÖÓÆµÂÊ
+static void systemCoreClockInit(uint32_t pllMultipler)
+{
+    RCC_OscInitTypeDef oscInit = {0};
+    RCC_ClkInitTypeDef clkInit = {0};
+
+    /* é…ç½®æŒ¯è¡å™¨ï¼šHSE + PLL */
+    oscInit.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+    oscInit.HSEState       = RCC_HSE_ON;
+    oscInit.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
+    oscInit.PLL.PLLState   = RCC_PLL_ON;
+    oscInit.PLL.PLLSource  = RCC_PLLSOURCE_HSE;
+    oscInit.PLL.PLLMUL     = pllMultipler;
+    HAL_RCC_OscConfig(&oscInit);
+
+    /* é…ç½®æ€»çº¿æ—¶é’Ÿï¼šSYSCLK=PLLCLKï¼ŒAHB ä¸åˆ†é¢‘ï¼ŒAPB1 äºŒåˆ†é¢‘ï¼ŒAPB2 ä¸åˆ†é¢‘ */
+    clkInit.ClockType = RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_HCLK |
+                        RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
+    clkInit.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+    clkInit.AHBCLKDivider = RCC_SYSCLK_DIV1;
+    clkInit.APB1CLKDivider = RCC_HCLK_DIV2;
+    clkInit.APB2CLKDivider = RCC_HCLK_DIV1;
+    HAL_RCC_ClockConfig(&clkInit, FLASH_LATENCY_2);
+
+    /* è®°å½•æ—¶é’Ÿé…ç½® */
+    s_clockConfig.pll_multipliter = pllMultipler;
+    s_clockConfig.system_freq = HSE_VALUE * pllMultipler;
+    s_clockConfig.hclk_freq = s_clockConfig.system_freq;
+    s_clockConfig.pclk1_freq = s_clockConfig.system_freq / 2;
+    s_clockConfig.pclk2_freq = s_clockConfig.system_freq;
 }
 
 /**
- * @brief   Ê±ÖÓ·´³õÊ¼»¯
- * @param   NULL
- * @retval  NULL
- * @note    ¸´Î»ËùÓĞÍâÉè£¬ÎªÏµÍ³¸´Î»»òµÍ¹¦ºÄ×ö×¼±¸
+ * @brief   ç³»ç»Ÿåˆå§‹åŒ–ï¼šHAL æ—¶åŸº + 72MHz ç³»ç»Ÿæ—¶é’Ÿ + SysTick
  */
-void systemCoreClockDeinit(void){
-    //¸´Î»RCCÅäÖÃ
+void systemCoreInit(void)
+{
+    HAL_Init();
+    systemCoreClockInit(RCC_PLL_MUL9);      /* ç³»ç»Ÿæ—¶é’Ÿ 72MHz */
+    HAL_SYSTICK_Config(HAL_RCC_GetHCLKFreq() / 1000);
+    SystemCoreClockUpdate();
+}
+
+/**
+ * @brief   æ—¶é’Ÿååˆå§‹åŒ–ï¼ˆå¤ä½ RCC å¹¶æ¸…é›¶æ—¶é’Ÿé…ç½®ï¼Œä¸ºç³»ç»Ÿå¤ä½åšå‡†å¤‡ï¼‰
+ */
+void systemCoreClockDeinit(void)
+{
     HAL_RCC_DeInit();
 
-    //Çå³ıÊ±ÖÓÅäÖÃ
-    g_systemClockConfigStruct.hclk_freq = 0;
-    g_systemClockConfigStruct.pclk1_freq = 0;
-    g_systemClockConfigStruct.pclk2_freq = 0;
-    g_systemClockConfigStruct.pll_multipliter = 0;
-    g_systemClockConfigStruct.system_freq = 0;
+    s_clockConfig.system_freq = 0;
+    s_clockConfig.hclk_freq = 0;
+    s_clockConfig.pclk1_freq = 0;
+    s_clockConfig.pclk2_freq = 0;
+    s_clockConfig.pll_multipliter = 0;
 }
 
 /**
- * @brief   »ñÈ¡Ê±ÖÓÅäÖÃ
- * @param   NULL
- * @retval  Ê±ÖÓÅäÖÃ½á¹¹ÌåÖ¸Õë
- * @note    NULL
+ * @brief   è·å–å½“å‰æ—¶é’Ÿé…ç½®
+ * @retval  æ—¶é’Ÿé…ç½®ç»“æ„ä½“æŒ‡é’ˆ
  */
-const SystemClockConfig_t* systemCoreGetClockConfig(void){
-    return &g_systemClockConfigStruct;
+const SystemClockConfig_t* systemCoreGetClockConfig(void)
+{
+    return &s_clockConfig;
 }
 
 /**
- * @brief   ÉèÖÃÖĞ¶ÏÏòÁ¿±í
- * @param   baseAddr:ÏòÁ¿±í»ùµØÖ·
- * @retval  NULL
- * @note    1.×Ô¶¯ÊÊÅäF1/F4/L4/H7µÈÏµÁĞµÄ¶ÔÆëÒªÇó
- *          2.FreeRTOSÖØ¶¨Î»µ½RAMÊ±£¬Ö±½Ó´«RAM»ùµØÖ·¼´¿É
- *          3.°üº¬µØÖ·ºÏ·¨ĞÔ¼ì²éºÍÍ¬²½ÆÁÕÏ£¬±ÜÃâÒì³£
+ * @brief   è®¾ç½®ä¸­æ–­å‘é‡è¡¨åŸºåœ°å€
+ * @param   baseAddr : å‘é‡è¡¨åŸºåœ°å€
+ * @note    1. F1 ç³»åˆ—è¦æ±‚ 128 å­—èŠ‚å¯¹é½
+ *          2. FreeRTOS é‡å®šä½åˆ° RAM æ—¶ç›´æ¥ä¼  RAM åŸºåœ°å€
+ *          3. åœ°å€éæ³•æ—¶è§¦å‘ assert
  */
-void systemCoreSetVectorTable(uint32_t baseAddr){
-    uint32_t vtorMask;  //¶ÔÆëÑÚÂë
+void systemCoreSetVectorTable(uint32_t baseAddr)
+{
+    uint32_t alignedAddr = baseAddr & 0x1FFFFF80;   /* 128 å­—èŠ‚å¯¹é½æ©ç  */
 
-    vtorMask = 0x1FFFFF80; // 128×Ö½Ú¶ÔÆë£¨µÍ7Î»È«²¿ÖÃÁã£©
-
-    //µØÖ·¶ÔÆë
-    uint32_t alignedAddr = baseAddr & vtorMask;
-
-    //ºÏ·¨ĞÔ¼ì²é
-    if((alignedAddr >= FLASH_BASE && alignedAddr < (FLASH_BASE + FLASH_SIZE)) ||
+    if ((alignedAddr >= FLASH_BASE && alignedAddr < (FLASH_BASE + FLASH_SIZE)) ||
         (alignedAddr >= RAM_BASE && alignedAddr < (RAM_BASE + RAM_SIZE)))
     {
         SCB->VTOR = alignedAddr;
-        __DSB();    //Êı¾İÍ¬²½ÆÁÕÏ
-        __ISB();    //Ö¸ÁîÍ¬²½ÆÁÕÏ£¬Ç¿ÖÆË¢ĞÂÖ¸ÁîÁ÷Ë®Ïß
-    }else{
-        assert_param(0);    //µØÖ··Ç·¨£¬´¥·¢¶ÏÑÔ
+        __DSB();    /* æ•°æ®åŒæ­¥å±éšœ */
+        __ISB();    /* æŒ‡ä»¤åŒæ­¥å±éšœï¼Œå¼ºåˆ¶åˆ·æ–°æŒ‡ä»¤æµæ°´çº¿ */
+    }
+    else
+    {
+        assert_param(0);    /* åœ°å€éæ³• */
     }
 }
 
 /**
- * @brief   ½øÈë´ı»úÄ£Ê½
- * @param   NULL
- * @retval  NULL
- * @note    »½ĞÑºóÏµÍ³½«¸´Î»
+ * @brief   è¿›å…¥å¾…æœºæ¨¡å¼
+ * @note    æ‰ç”µåç³»ç»Ÿå¤ä½
  */
-void systemCoreEnterStandby(void){
-    //Çå³ı»½ĞÑ±êÖ¾
-    __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WU);
-    //½øÈë´ı»úÄ£Ê½
+void systemCoreEnterStandby(void)
+{
+    __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WU);  /* æ¸…é™¤å”¤é†’æ ‡å¿— */
     HAL_PWR_EnterSTANDBYMode();
 }
 
 /**
- * @brief   ÏµÍ³Èí¸´Î»
- * @param   NULL
- * @retval  NULL
- * @note    
+ * @brief   ç³»ç»Ÿè½¯å¤ä½
  */
-void systemCoreSoftReset(void){
-    NVIC_SystemReset(); //ÏµÍ³¸´Î»
+void systemCoreSoftReset(void)
+{
+    NVIC_SystemReset();
 }
 
 /**
- * @brief   »ñÈ¡CPU ID
- * @param   NULL
- * @retval  CPU ID
- * @note    
+ * @brief   è·å– CPU ID
+ * @retval  CPU ID å¯„å­˜å™¨å€¼
  */
-uint32_t systemCoreGetCPUID(void){
+uint32_t systemCoreGetCPUID(void)
+{
     return SCB->CPUID;
 }
 
 /**
- * @brief »ñÈ¡STM32F1Ğ¾Æ¬ÍêÕû96Î»Î¨Ò»ID
- * @param uid_buf Ö¸Ïò³¤¶ÈÎª3µÄuint32_tÊı×é£¬ÓÃÓÚ´æ´¢96Î»UID£¨3¸ö32Î»£©
- * @note Êı×éË³Ğò£ºuid_buf[0]=0x1FFFF7E8, uid_buf[1]=0x1FFFF7EC, uid_buf[2]=0x1FFFF7F0
+ * @brief   è·å–èŠ¯ç‰‡ 96 ä½å”¯ä¸€ ID
+ * @param   uid_buf : é•¿åº¦ 3 çš„ uint32_t æ•°ç»„
+ * @note    é¡ºåºï¼šuid_buf[0]=0x1FFFF7E8, uid_buf[1]=0x1FFFF7EC, uid_buf[2]=0x1FFFF7F0
  */
-void System_GetUID(uint32_t uid_buf[3]) {
-    if (uid_buf == NULL) {
-        return; // ·ÀÖ¹¿ÕÖ¸Õë
+void System_GetUID(uint32_t uid_buf[3])
+{
+    if (uid_buf == NULL)
+    {
+        return;     /* é˜²ç©ºæŒ‡é’ˆ */
     }
-    // ºê¶¨ÒåUIDµØÖ·£¬ÌáÉı¿É¶ÁĞÔ£¨F1×¨Êô£©
-    #define STM32F1_UID_BASE_ADDR 0x1FFFF7E8U
-    // ¶ÁÈ¡3¸ö32Î»£¬×é³ÉÍêÕû96Î»UID£¨volatile·ÀÖ¹±àÒëÆ÷ÓÅ»¯£©
-    uid_buf[0] = *(volatile uint32_t*)(STM32F1_UID_BASE_ADDR + 0);
-    uid_buf[1] = *(volatile uint32_t*)(STM32F1_UID_BASE_ADDR + 4);
-    uid_buf[2] = *(volatile uint32_t*)(STM32F1_UID_BASE_ADDR + 8);
+
+    /* volatile è¯»å–é˜²æ­¢ç¼–è¯‘å™¨ä¼˜åŒ– */
+    uid_buf[0] = *(volatile uint32_t *)(UID_BASE_ADDR + 0);
+    uid_buf[1] = *(volatile uint32_t *)(UID_BASE_ADDR + 4);
+    uid_buf[2] = *(volatile uint32_t *)(UID_BASE_ADDR + 8);
 }

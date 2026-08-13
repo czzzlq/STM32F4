@@ -6,7 +6,7 @@
 #include "delay.h"
 
 /* 微秒延时换算系数：SysTick 时钟 = HCLK/8，每 1us 对应 (systemclkMHz/8) 个计数值 */
-static uint32_t g_usDelayFactor = 0;
+static uint32_t s_usDelayFactor = 0;
 
 #if SYS_SUPPORT_OS
 
@@ -44,7 +44,7 @@ void systickDelayInit(uint16_t systemclkMHz)
     SysTick->CTRL = 0;      /* 先关闭 SysTick 再修改配置 */
 
     HAL_SYSTICK_CLKSourceConfig(SYSTICK_CLKSOURCE_HCLK_DIV8);
-    g_usDelayFactor = systemclkMHz / 8;
+    s_usDelayFactor = systemclkMHz / 8;
 
 #if SYS_SUPPORT_OS
     /* 心跳周期 = 1ms：reload = (HCLK/8) / configTICK_RATE_HZ */
@@ -65,14 +65,14 @@ void systickDelay_us(uint32_t us)
 {
     uint32_t startTick;             /* 起始计数值 */
     uint32_t currentTick;           /* 当前计数值 */
-    uint32_t accumulatedTicks;      /* 已流逝的计数值 */
-    const uint32_t reloadMaxVal = SysTick->LOAD;
-    const uint32_t requiredTicks = us * g_usDelayFactor;
+    uint32_t elapsedTicks;          /* 已流逝的计数值 */
+    const uint32_t reloadValue = SysTick->LOAD;
+    const uint32_t requiredTicks = us * s_usDelayFactor;
 
     startTick = SysTick->VAL;
-    accumulatedTicks = 0;
+    elapsedTicks = 0;
 
-    while (accumulatedTicks < requiredTicks)
+    while (elapsedTicks < requiredTicks)
     {
         currentTick = SysTick->VAL;
 
@@ -81,11 +81,11 @@ void systickDelay_us(uint32_t us)
             /* SysTick 递减计数：当前值变小为同一周期内递减，变大则发生了回绕 */
             if (currentTick < startTick)
             {
-                accumulatedTicks += startTick - currentTick;
+                elapsedTicks += startTick - currentTick;
             }
             else
             {
-                accumulatedTicks += reloadMaxVal + startTick - currentTick;
+                elapsedTicks += reloadValue + startTick - currentTick;
             }
 
             startTick = currentTick;

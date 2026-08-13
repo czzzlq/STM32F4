@@ -23,5 +23,8 @@ void atim_timx_cplm_pwm_set(uint16_t ccr, uint8_t dtg);
 /* 高级定时器：PWM 输入模式（测量周期与占空比） */
 void atim_timx_pwmin_chy_init(void);
 void atim_timx_pwmin_chy_restart(void);
+uint8_t atim_timx_pwmin_chy_get_sta(void);
+uint32_t atim_timx_pwmin_chy_get_hval(void);
+uint32_t atim_timx_pwmin_chy_get_cval(void);
 
 #endif /* __ATIM_H__ */

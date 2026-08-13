@@ -74,6 +74,10 @@ virtualFolder:
         - path: ../bsp/bsp_gpio.h
         - path: ../bsp/bsp_init.h
         - path: ../bsp/bsp_init.c
+        - path: ../bsp/bsp_lcd.h
+        - path: ../bsp/bsp_sram.h
+        - path: ../bsp/bsp_timer.h
+        - path: ../bsp/bsp_uart.h
       folders: []
     - name: common
       files:
