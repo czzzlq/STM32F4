@@ -3,9 +3,10 @@
  * @brief   重写驱动后的烧录验证程序
  * @note    验证内容：
  *          1. 串口环形缓冲区 + DMA：PC 发送任意数据帧，板子原样回显
- *          2. 外部 SRAM：上电自检（覆盖 32 位/16 位/字节三种拷贝路径）
- *          3. 内存池（malloc）：上电自检（分配/写/读回/释放/使用率）
- *          4. LCD：绘图算法演示（窗口填充/分段画线/圆/数字显示）
+ *          2. 外部 SRAM：探测到芯片才跑自检（精英板等无外部 SRAM 的板子自动跳过），
+ *             覆盖 32 位/16 位/字节三种拷贝路径
+ *          3. 内存池（malloc）：内部池自检；外部池仅在探测到 SRAM 时参与
+ *          4. LCD：按实际分辨率自适应布局（支持 240x320 / 480x800 等任意面板）
  *          5. KEY：KEY0 短按翻转 LED0；KEY1 短按重跑自检；WKUP 长按重绘 LCD
  *          6. LED：LED1 500ms 闪烁
  */
@@ -43,7 +44,7 @@ void usart1RxIdleHook(uint16_t len)
 }
 
 /* ==================== 自检用静态缓冲 ==================== */
-/* 避开 malloc 外部内存池区（0x68000000 ~ 0x68000022），测试区从 0x1000 开始 */
+/* 测试区避开 malloc 外部内存池区（0x68000000 ~ 0x68000022），从 0x1000 开始 */
 #define SRAM_TEST_OFFSET    0x1000
 #define SRAM_TEST_SIZE      1024
 
@@ -51,7 +52,28 @@ static uint8_t s_sramTestBuf[SRAM_TEST_SIZE];       /* 写入数据 */
 static uint8_t s_sramTestCheck[SRAM_TEST_SIZE];     /* 回读校验数据 */
 
 /**
- * @brief   外部 SRAM 读写自检
+ * @brief   探测外部 SRAM 是否存在（写 0xA5/0x5A 再读回比对）
+ * @retval  1 存在；0 不存在（如精英板未焊接 SRAM 芯片）
+ */
+static uint8_t sram_probe(void)
+{
+    sram_test_write(SRAM_TEST_OFFSET, 0xA5);
+    if (sram_test_read(SRAM_TEST_OFFSET) != 0xA5)
+    {
+        return 0;
+    }
+
+    sram_test_write(SRAM_TEST_OFFSET, 0x5A);
+    if (sram_test_read(SRAM_TEST_OFFSET) != 0x5A)
+    {
+        return 0;
+    }
+
+    return 1;
+}
+
+/**
+ * @brief   外部 SRAM 读写自检（无芯片时跳过）
  * @note    覆盖 sram_write/read 的三级路径：
  *          A. 双 4 字节对齐 + 4 的倍数长度（32 位路径）
  *          B. 奇地址（头部字节对齐 + 16 位路径）
@@ -62,6 +84,12 @@ static void sram_self_test(void)
 {
     uint32_t errCount = 0;
     uint16_t i;
+
+    if (!sram_probe())
+    {
+        printf("[SRAM] not detected, self test skipped\r\n");
+        return;
+    }
 
     /* 生成测试模式（全字节遍历） */
     for (i = 0; i < SRAM_TEST_SIZE; i++)
@@ -108,21 +136,32 @@ static void sram_self_test(void)
 
 /**
  * @brief   内存池自检（分配 -> 写模式 -> 校验 -> 释放 -> 使用率归零）
- * @note    验证按字扫描的首次适配分配器与释放逻辑
+ * @note    验证按字扫描的首次适配分配器与释放逻辑；
+ *          外部池仅在探测到 SRAM 芯片时参与
  */
 static void malloc_self_test(void)
 {
-    uint8_t *p1, *p2, *p3;
+    uint8_t *p1, *p2, *p3 = NULL;
     uint32_t errCount = 0;
     uint16_t i;
+    uint8_t hasSramEx = sram_probe();
 
     p1 = (uint8_t *)mymalloc(SRAMIN, 512);      /* 内部 SRAM：512 字节（16 块） */
     p2 = (uint8_t *)mymalloc(SRAMIN, 64);       /* 内部 SRAM：64 字节（2 块） */
-    p3 = (uint8_t *)mymalloc(SRAMEX, 16);       /* 外部 SRAM：16 字节（1 块，池共 32 字节） */
 
-    printf("[MALLOC] p1=0x%x p2=0x%x p3=0x%x\r\n", (unsigned int)p1, (unsigned int)p2, (unsigned int)p3);
+    printf("[MALLOC] p1=0x%x p2=0x%x", (unsigned int)p1, (unsigned int)p2);
 
-    if (p1 == NULL || p2 == NULL || p3 == NULL)
+    if (hasSramEx)
+    {
+        p3 = (uint8_t *)mymalloc(SRAMEX, 16);   /* 外部 SRAM：16 字节（1 块，池共 32 字节） */
+        printf(" p3=0x%x\r\n", (unsigned int)p3);
+    }
+    else
+    {
+        printf(" (SRAMEX: not detected, skipped)\r\n");
+    }
+
+    if (p1 == NULL || p2 == NULL || (hasSramEx && p3 == NULL))
     {
         printf("[MALLOC] self test: FAIL (alloc failed)\r\n");
         return;
@@ -141,53 +180,68 @@ static void malloc_self_test(void)
         if (p2[i] != (uint8_t)(0xFF - i)) errCount++;
     }
 
-    for (i = 0; i < 16; i++) p3[i] = 0xA5;
-    for (i = 0; i < 16; i++)
+    if (hasSramEx)
     {
-        if (p3[i] != 0xA5) errCount++;
+        for (i = 0; i < 16; i++) p3[i] = 0xA5;
+        for (i = 0; i < 16; i++)
+        {
+            if (p3[i] != 0xA5) errCount++;
+        }
     }
 
     /* 释放后使用率应归零 */
     myfree(SRAMIN, p1);
     myfree(SRAMIN, p2);
-    myfree(SRAMEX, p3);
+    if (hasSramEx)
+    {
+        myfree(SRAMEX, p3);
+    }
 
-    if (my_mem_perused(SRAMIN) != 0 || my_mem_perused(SRAMEX) != 0)
+    if (my_mem_perused(SRAMIN) != 0 || (hasSramEx && my_mem_perused(SRAMEX) != 0))
     {
         errCount++;
     }
 
-    printf("[MALLOC] self test: %s (%d errors, used IN=%d%% EX=%d%%)\r\n",
+    printf("[MALLOC] self test: %s (%d errors, used IN=%d%%",
            (errCount == 0) ? "PASS" : "FAIL", errCount,
-           my_mem_perused(SRAMIN) / 10, my_mem_perused(SRAMEX) / 10);
+           my_mem_perused(SRAMIN) / 10);
+
+    if (hasSramEx)
+    {
+        printf(" EX=%d%%", my_mem_perused(SRAMEX) / 10);
+    }
+    printf(")\r\n");
 }
 
 /**
- * @brief   LCD 绘图演示（覆盖重写后的各绘图算法）
+ * @brief   LCD 绘图演示（按实际分辨率自适应布局，覆盖重写后的各绘图算法）
  */
 static void demo_lcd(void)
 {
+    uint16_t w = lcddev.width;
+    uint16_t h = lcddev.height;
+
     lcd_clear(WHITE);
-    lcd_show_string(10, 5, 220, 32, 16, "Driver Verify", RED);
+    lcd_show_string(w / 8, h / 32, w * 3 / 4, h / 16, 16, "Driver Verify", RED);
 
     /* 窗口填充：单次设窗口连续写 RAM */
-    lcd_fill(5,   45, 75,  145, BLUE);
-    lcd_fill(85,  45, 155, 145, GREEN);
-    lcd_fill(165, 45, 235, 145, RED);
+    lcd_fill(w / 16,          h / 8,  w * 5 / 16,  h / 2, BLUE);
+    lcd_fill(w * 6 / 16,      h / 8,  w * 10 / 16, h / 2, GREEN);
+    lcd_fill(w * 11 / 16,     h / 8,  w * 15 / 16, h / 2, RED);
 
     /* 画线：水平（段批量化退化单段）/ 竖直（单列填充快路径）/ 斜线 */
-    lcd_draw_line(5,   160, 235, 160, BLACK);
-    lcd_draw_line(120, 155, 120, 315, BLACK);
-    lcd_draw_line(5,   155, 235, 315, GRAY);
+    lcd_draw_line(w / 16,         h * 9 / 16, w * 15 / 16, h * 9 / 16, BLACK);
+    lcd_draw_line(w / 2,          h * 17 / 32, w / 2,      h - 2,      BLACK);
+    lcd_draw_line(w / 16,         h * 17 / 32, w * 15 / 16, h - 2,      GRAY);
 
     /* 矩形 / 圆（轮廓）/ 实心圆 */
-    lcd_draw_rectangle(10, 170, 80, 240, BROWN);
-    lcd_draw_circle(190, 290, 25, MAGENTA);
-    lcd_fill_circle(140, 205, 20, YELLOW);
+    lcd_draw_rectangle(w / 12,       h * 19 / 32, w / 6,        h * 25 / 32, BROWN);
+    lcd_draw_circle(w * 12 / 16,     h * 25 / 32, h / 14, MAGENTA);
+    lcd_fill_circle(w * 9 / 16,      h * 22 / 32, h / 16, YELLOW);
 
     /* 数字显示：10 次幂查表 */
-    lcd_show_num(10, 275, 12345, 5, 16, BLACK);
-    lcd_show_xnum(120, 275, 9876, 8, 16, 0x80, BLACK);     /* 高位补 0 */
+    lcd_show_num(w / 12,     h * 27 / 32, 12345, 5, 16, BLACK);
+    lcd_show_xnum(w * 6 / 16, h * 27 / 32, 9876, 8, 16, 0x80, BLACK);
 }
 
 /* ==================== 任务函数 ==================== */
@@ -276,6 +330,7 @@ static void start_task(void *pvParameters)
     UNUSED(pvParameters);
 
     printf("\r\n===== Driver Verification =====\r\n");
+    printf("[LCD] %dx%d ID=0x%x\r\n", lcddev.width, lcddev.height, lcddev.id);
     sram_self_test();
     malloc_self_test();
     demo_lcd();
