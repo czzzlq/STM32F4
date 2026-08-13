@@ -1,49 +1,32 @@
 /**
-  ******************************************************************************
-  * @file        usart.h
-  * @brief       ´®¿Ú1³õÊ¼»¯/ÊÕ·¢Çı¶¯£¨Ö§³ÖprintfÖØ¶¨Ïò¡¢ÖĞ¶Ï½ÓÊÕ£©
-  * @author      czzlq
-  * @date        2025-12-15
-  * @version     V1.0
-  * @attention   ÊÊÅäSTM32F103£¬¼æÈİAC5/AC6±àÒëÆ÷£¬½ûÓÃ°ëÖ÷»úÄ£Ê½
-  ******************************************************************************
-  */
+ * @file    usart.h
+ * @brief   ä¸²å£1é©±åŠ¨æ¥å£ï¼ˆprintf é‡å®šå‘ + ä¸­æ–­æ¥æ”¶ï¼‰
+ * @note    ç¡¬ä»¶é…ç½®è§ bsp/bsp_uart.hï¼›æ”¯æŒ AC5/AC6ï¼Œå·²ç¦ç”¨åŠä¸»æœºæ¨¡å¼
+ */
 #ifndef __USART_H__
 #define __USART_H__
 
 #include <stdio.h>
-#include "stm32f1xx.h"
+#include "bsp_uart.h"
 
-//´®¿Ú1Òı½ÅÅäÖÃ
-#define USART1_TX_GPIO_PORT             GPIOA
-#define USART1_TX_GPIO_PIN              GPIO_PIN_9
-#define USART1_TX_GPIO_CLK_ENABLE()     do{ __HAL_RCC_GPIOA_CLK_ENABLE(); }while(0);
+/* ä¸²å£é©±åŠ¨é…ç½® */
+#define USART1_MAX_RECV_LEN             200U    /* æ¥æ”¶ç¼“å†²åŒºå¤§å° */
+#define USART1_RX_ENABLE                1U      /* 1 ä½¿èƒ½ä¸­æ–­æ¥æ”¶ï¼Œ0 å…³é—­ */
+#define USART1_RX_BUF_SIZE              1U      /* HAL å•æ¬¡ä¸­æ–­æ¥æ”¶é•¿åº¦ */
 
-#define USART1_RX_GPIO_PORT             GPIOA
-#define USART1_RX_GPIO_PIN              GPIO_PIN_10
-#define USART1_RX_GPIO_CLK_ENABLE()     do{ __HAL_RCC_GPIOA_CLK_ENABLE(); }while(0);
+/* æ¥æ”¶çŠ¶æ€ä½åŸŸ
+ * bit15      : æ¥æ”¶å®Œæˆæ ‡å¿—
+ * bit14      : å·²æ”¶åˆ°å›è½¦ç¬¦(\r)
+ * bit13~0    : å·²æ¥æ”¶å­—èŠ‚é•¿åº¦ */
+#define USART1_RX_STA_COMPLETE          0X8000U
+#define USART1_RX_STA_HAS_CR            0X4000U
+#define USART1_RX_STA_LEN_MASK          0X3FFFU
 
-//´®¿Ú1ÍâÉèÅäÖÃ
-#define USART1_CFG_PERIPH               USART1
-#define USART1_CFG_IRQn                 USART1_IRQn
-#define USART1_CFG_IRQHandler           USART1_IRQHandler
-#define USART1_CFG_CLK_ENABLE()         do{ __HAL_RCC_USART1_CLK_ENABLE(); }while(0);
-
-//´®¿Ú½ÓÊÕÅäÖÃ
-#define USART1_MAX_RECV_LEN             200U    //×î´ó½ÓÊÕ×Ö½ÚÊı
-#define USART1_RX_ENABLE                1U      //1-Ê¹ÄÜ½ÓÊÕ£¬0-½ûÓÃ½ÓÊÕ
-#define USART1_RX_BUF_SIZE              1U      //HAL¿âÖĞ¶Ï½ÓÊÕ»º³å´óĞ¡
-
-//½ÓÊÕ×´Ì¬Î»¶¨Òå
-#define USART1_RX_STA_COMPLETE          0X8000U //½ÓÊÕÍê³É±êÖ¾(bit15)
-#define USART1_RX_STA_HAS_CR            0X4000U //½ÓÊÕµ½»Ø³µ·û(\r,0x0d)(bit14)
-#define USART1_RX_STA_LEN_MASK          0X3FFFU //½ÓÊÕ×Ö½ÚÊıÑÚÂë(bit13~0)
-
-// ¶ÔÍâ½Ó¿ÚÉùÃ÷
+/* é©±åŠ¨æ¥å£ */
 uint8_t *usart1GetRxBuffer(void);
 uint16_t usart1GetRxStatus(void);
 void usart1ClearRxStatus(void);
-void usart1Init(uint32_t baudRate); //´®¿Ú1³õÊ¼»¯
+void usart1Init(uint32_t baudRate);
 void usart1SendBytes(uint8_t *pData, uint16_t len);
 
 #endif /* __USART_H__ */
