@@ -24,7 +24,8 @@ typedef enum
     DRV_KEY_EVENT_NONE = 0,             /* 无事件 */
     DRV_KEY_EVENT_PRESS,                /* 短按事件（释放时产生） */
     DRV_KEY_EVENT_RELEASE,              /* 释放事件 */
-    DRV_KEY_EVENT_LONG_PRESS_TRIGGER    /* 长按事件（按下持续到阈值时产生） */
+    DRV_KEY_EVENT_LONG_PRESS_TRIGGER,   /* 长按事件（按下持续到阈值时产生） */
+    DRV_KEY_EVENT_REPEAT                /* 连发事件（长按保持期间周期性产生） */
 } drv_key_event_t;
 
 /* 按键控制块 */
@@ -37,6 +38,7 @@ typedef struct
     uint8_t     key_event;              /* 待处理事件（drv_key_event_t） */
     uint8_t     active_level;           /* 有效电平 */
     uint8_t     long_press_trigger;     /* 长按已触发标志 */
+    uint32_t    repeat_time;            /* 上次连发时刻（tick） */
 } drv_key_ctrl_block_t;
 
 /* 按键驱动初始化 */

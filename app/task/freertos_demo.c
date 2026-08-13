@@ -258,10 +258,16 @@ static void key_task(void *pvParameters)
 
     while (1)
     {
-        if (drv_key_get_event(DRV_KEY_ID_0) == DRV_KEY_EVENT_PRESS)
+        drv_key_event_t key0Event = drv_key_get_event(DRV_KEY_ID_0);
+
+        if (key0Event == DRV_KEY_EVENT_PRESS)
         {
             drv_led_toggle(DRV_LED_ID_0);
             printf("[KEY] KEY0 press, LED0 toggle\r\n");
+        }
+        else if (key0Event == DRV_KEY_EVENT_REPEAT)
+        {
+            drv_led_toggle(DRV_LED_ID_0);       /* 长按连发：LED0 以 500ms 节奏翻转 */
         }
 
         if (drv_key_get_event(DRV_KEY_ID_1) == DRV_KEY_EVENT_PRESS)

@@ -10,6 +10,7 @@
 
 #define DEBOUNCE_TIME           10      /* 消抖时间（ms） */
 #define KEY_LONG_PRESS_TIME     3000    /* 长按阈值（ms） */
+#define KEY_REPEAT_TIME         500     /* 连发周期（ms） */
 
 /**
  * @brief   按键全局控制块
@@ -17,9 +18,9 @@
  */
 volatile drv_key_ctrl_block_t drv_key_ctrl_block[DRV_KEY_ID_MAX] =
 {
-    {BSP_KEY0_PORT, BSP_KEY0_PIN, 0, 0, DRV_KEY_EVENT_NONE, BSP_KEY0_ACTIVE_LEVEL, 0},
-    {BSP_KEY1_PORT, BSP_KEY1_PIN, 0, 0, DRV_KEY_EVENT_NONE, BSP_KEY1_ACTIVE_LEVEL, 0},
-    {BSP_WKUP_PORT, BSP_WKUP_PIN, 0, 0, DRV_KEY_EVENT_NONE, BSP_WKUP_ACTIVE_LEVEL, 0}
+    {BSP_KEY0_PORT, BSP_KEY0_PIN, 0, 0, DRV_KEY_EVENT_NONE, BSP_KEY0_ACTIVE_LEVEL, 0, 0},
+    {BSP_KEY1_PORT, BSP_KEY1_PIN, 0, 0, DRV_KEY_EVENT_NONE, BSP_KEY1_ACTIVE_LEVEL, 0, 0},
+    {BSP_WKUP_PORT, BSP_WKUP_PIN, 0, 0, DRV_KEY_EVENT_NONE, BSP_WKUP_ACTIVE_LEVEL, 0, 0}
 };
 
 /**
@@ -47,6 +48,16 @@ static void key_detect(drv_key_ctrl_block_t* pCtrlBlock)
         {
             pCtrlBlock->key_event = DRV_KEY_EVENT_LONG_PRESS_TRIGGER;
             pCtrlBlock->long_press_trigger = 1;
+            pCtrlBlock->repeat_time = now;              /* 连发计时起点 */
+        }
+        else if (pCtrlBlock->long_press_trigger)
+        {
+            /* 长按保持期间按 KEY_REPEAT_TIME 周期产生连发事件 */
+            if (now - pCtrlBlock->repeat_time >= KEY_REPEAT_TIME)
+            {
+                pCtrlBlock->key_event = DRV_KEY_EVENT_REPEAT;
+                pCtrlBlock->repeat_time = now;
+            }
         }
         /* 短按事件等释放后再判定 */
     }
