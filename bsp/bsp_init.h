@@ -19,6 +19,7 @@ extern "C" {
 #define BSP_USE_USART       1   /* 串口 */
 #define BSP_USE_SRAM        1   /* 外部 SRAM */
 #define BSP_USE_TIMER       1   /* 定时器 */
+#define BSP_USE_ADC         1   /* ADC（内部温度/Vrefint 监测） */
 
 /*======================= Board Init Functions =======================*/
 /**

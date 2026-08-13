@@ -53,7 +53,9 @@ void gtim_timx_int_init(uint16_t arr, uint16_t psc)
 
 /**
  * @brief   通用定时器定时中断服务函数（仅清标志，业务由用户扩展）
+ * @note    与 btim.c 的 TIM3 中断互斥，由 GTIM_TIMX_INT_IRQ_ENABLE 控制
  */
+#if GTIM_TIMX_INT_IRQ_ENABLE
 void GTIM_TIMX_INT_IRQHandler(void)
 {
     if (GTIM_TIMX_INT->SR & TIM_SR_UIF)
@@ -61,6 +63,7 @@ void GTIM_TIMX_INT_IRQHandler(void)
         GTIM_TIMX_INT->SR = ~TIM_SR_UIF;
     }
 }
+#endif /* GTIM_TIMX_INT_IRQ_ENABLE */
 
 /* ==================== PWM 输出 ==================== */
 
@@ -174,8 +177,10 @@ uint16_t gtim_timx_cap_chy_get_val(void)
 /**
  * @brief   输入捕获中断服务函数
  * @note    更新中断用于统计高电平期间的溢出次数（s_capSta[5:0]，最大 63 次，
- *          最长测量 63*65536+65535 ≈ 4.19s @1us 计数）
+ *          最长测量 63*65536+65535 ≈ 4.19s @1us 计数）；
+ *          与 btim.c 的 TIM5 中断互斥，由 GTIM_TIMX_CAP_IRQ_ENABLE 控制
  */
+#if GTIM_TIMX_CAP_IRQ_ENABLE
 void GTIM_TIMX_CAP_IRQHandler(void)
 {
     uint32_t sr = GTIM_TIMX_CAP->SR;
@@ -206,6 +211,7 @@ void GTIM_TIMX_CAP_IRQHandler(void)
         GTIM_TIMX_CAP->SR = ~TIM_SR_CC1IF;          /* 清捕获标志 */
     }
 }
+#endif /* GTIM_TIMX_CAP_IRQ_ENABLE */
 
 /* ==================== 外部计数 ==================== */
 

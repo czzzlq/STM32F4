@@ -43,8 +43,20 @@ virtualFolder:
           files:
             - path: ../driver/TIMER/btim.c
             - path: ../driver/TIMER/btim.h
+            - path: ../driver/TIMER/gtim.c
+            - path: ../driver/TIMER/gtim.h
             - path: ../driver/TIMER/timer_callback.c
             - path: ../driver/TIMER/timer_callback.h
+          folders: []
+        - name: ADC
+          files:
+            - path: ../driver/ADC/drv_adc.c
+            - path: ../driver/ADC/drv_adc.h
+          folders: []
+        - name: IWDG
+          files:
+            - path: ../driver/IWDG/drv_iwdg.c
+            - path: ../driver/IWDG/drv_iwdg.h
           folders: []
         - name: KEY
           files:
@@ -78,6 +90,7 @@ virtualFolder:
         - path: ../bsp/bsp_sram.h
         - path: ../bsp/bsp_timer.h
         - path: ../bsp/bsp_uart.h
+        - path: ../bsp/bsp_adc.h
       folders: []
     - name: common
       files:
@@ -302,6 +315,8 @@ targets:
         - ../driver/LED
         - ../driver/KEY
         - ../driver/LCD
+        - ../driver/ADC
+        - ../driver/IWDG
         - ../driver/SRAM
         - ../driver/TIMER
         - ../driver/delay
@@ -327,6 +342,8 @@ targets:
         - ../driver/delay
         - ../driver/KEY
         - ../driver/LCD
+        - ../driver/ADC
+        - ../driver/IWDG
         - ../driver/LED
         - ../driver/SRAM
         - ../driver/TIMER

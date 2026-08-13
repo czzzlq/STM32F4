@@ -20,6 +20,10 @@
 #define BTIM_TIM5_INT_CLK_ENABLE()          do{ __HAL_RCC_TIM5_CLK_ENABLE(); }while(0)
 
 /*======================= 通用定时器：定时中断（gtim.c） =======================*/
+/* 定时中断 ISR 开关：GTIM 的 TIM3 与 btim.c 的 TIM3 定时中断互斥，
+ * 同时编译时本开关保持 0（gtim 的 PWM/捕获/计数功能不受影响） */
+#define GTIM_TIMX_INT_IRQ_ENABLE            0
+
 #define GTIM_TIMX_INT                       TIM3
 #define GTIM_TIMX_INT_IRQn                  TIM3_IRQn
 #define GTIM_TIMX_INT_IRQHandler            TIM3_IRQHandler
@@ -41,6 +45,10 @@
 #define GTIM_TIMX_PWM_CHY_CLK_ENABLE()      do{ __HAL_RCC_TIM3_CLK_ENABLE(); }while(0)
 
 /*======================= 通用定时器：输入捕获 =======================*/
+/* 捕获中断 ISR 开关：GTIM 的 TIM5 捕获与 btim.c 的 TIM5 定时中断互斥，
+ * 使用捕获功能时置 1 并禁用 btim 的 TIM5 */
+#define GTIM_TIMX_CAP_IRQ_ENABLE            0
+
 /* TIM5_CH1，默认 PA0（与 WKUP 复用） */
 #define GTIM_TIMX_CAP_CHY_GPIO_PORT         GPIOA
 #define GTIM_TIMX_CAP_CHY_GPIO_PIN          GPIO_PIN_0

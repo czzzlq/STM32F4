@@ -13,6 +13,7 @@
 #include "sram.h"
 #include "btim.h"
 #include "timer_callback.h"
+#include "drv_adc.h"
 #include "malloc.h"
 
 /**
@@ -51,6 +52,10 @@ status_t bsp_init(void)
 
 #if BSP_USE_KEY
     drv_key_init();         /* 9. 按键（注册 TIM5 扫描回调） */
+#endif
+
+#if BSP_USE_ADC
+    drv_adc_init();         /* 10. ADC（内部温度/Vrefint） */
 #endif
 
     return STATUS_OK;

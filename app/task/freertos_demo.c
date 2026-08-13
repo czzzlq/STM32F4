@@ -11,6 +11,7 @@
  *          6. LED：LED1 500ms 闪烁
  */
 #include "freertos_demo.h"
+#include "drv_adc.h"
 #include <string.h>
 
 /* 任务优先级与堆栈 */
@@ -198,6 +199,25 @@ static void malloc_self_test(void)
 }
 
 /**
+ * @brief   ADC 自检：内部温度传感器 + Vrefint 反推电源电压
+ */
+static void adc_self_test(void)
+{
+    int16_t temp = drv_adc_get_temp_tenth();
+    uint16_t vdda = drv_adc_get_vdda_mv();
+
+    if (temp < 0)
+    {
+        printf("[ADC] temp=-%d.%dC ", (int)(-temp) / 10, (int)(-temp) % 10);
+    }
+    else
+    {
+        printf("[ADC] temp=%d.%dC ", (int)temp / 10, (int)temp % 10);
+    }
+    printf("VDDA=%d.%02dV\r\n", vdda / 1000, (vdda % 1000) / 10);
+}
+
+/**
  * @brief   LCD 绘图演示（按实际分辨率自适应布局，覆盖重写后的各绘图算法）
  */
 static void demo_lcd(void)
@@ -312,6 +332,7 @@ static void start_task(void *pvParameters)
     printf("[LCD] %dx%d ID=0x%x\r\n", lcddev.width, lcddev.height, lcddev.id);
     sram_self_test();
     malloc_self_test();
+    adc_self_test();
     demo_lcd();
 
     os_enter_critical();
