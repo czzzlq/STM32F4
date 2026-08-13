@@ -1,14 +1,24 @@
 /**
  * @file    usart.c
- * @brief   串口1驱动实现（printf 重定向、中断接收、半主机禁用）
+ * @brief   串口1驱动实现（环形缓冲区 + DMA 收发 + printf 重定向 + 半主机禁用）
+ * @note    接收：DMA 循环模式直接写入环形缓冲（CPU 零拷贝），
+ *          读写位置由 NDTR 计数器与读指针推算，单生产者（DMA）单消费者模型无需加锁；
+ *          总线空闲（IDLE）中断通知帧结束
+ * @note    发送：DMA 搬运 + 阻塞等待，printf 仍走寄存器直发（逐字符 DMA 开销过大）；
+ *          printf 与 DMA 发送不可并发（fputc 内部会等待 DMA 发送完成）
  */
 #include "usart.h"
 #include <string.h>
 
 static UART_HandleTypeDef s_uartHandle;
-static uint8_t s_rxBuffer[USART1_MAX_RECV_LEN] = {0};              /* 接收缓冲 */
-static uint16_t s_rxStatus = 0;                                    /* 接收状态（位域见 usart.h） */
-static uint8_t s_rxTmpBuf[USART1_RX_BUF_SIZE] = {0};               /* 中断接收临时缓冲 */
+static DMA_HandleTypeDef s_uartRxDma;
+static DMA_HandleTypeDef s_uartTxDma;
+
+/* 环形接收缓冲（DMA 循环模式写入，2 的幂大小便于掩码取模） */
+static uint8_t s_rxDmaBuf[USART1_RX_DMA_BUF_SIZE];
+static uint16_t s_rxReadIndex = 0;      /* 消费者读指针 */
+
+#define RX_DMA_MASK     (USART1_RX_DMA_BUF_SIZE - 1)
 
 /* ==================== 半主机模式禁用 ==================== */
 #if (__ARMCC_VERSION >= 6010050)    /* AC6 */
@@ -52,110 +62,172 @@ FILE __stdout;      /* 标准输出（printf 默认使用） */
 
 /**
  * @brief   fputc 重定向：printf 最终调用此函数，寄存器直发到串口1
+ * @note    先等待 DMA 发送结束，避免与 DMA 数据流交叉
  */
 int fputc(int ch, FILE *f)
 {
     (void)f;
 
+    while (s_uartHandle.gState != HAL_UART_STATE_READY);     /* 等待 DMA 发送完成 */
     while ((USART1_CFG_PERIPH->SR & USART_SR_TXE) == 0);
     USART1_CFG_PERIPH->DR = (uint8_t)ch;
 
     return ch;
 }
 
-/* ==================== 串口核心驱动 ==================== */
+/* ==================== 环形缓冲区访问接口 ==================== */
 #if USART1_RX_ENABLE
+
 /**
- * @brief   串口接收回调（中断模式，由 HAL 库中断服务触发）
- * @note    单字节接收，在回调中解析 \r\n 结束符协议
+ * @brief   计算 DMA 写入位置（已接收字节数 = 缓冲大小 - NDTR 剩余计数）
  */
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+static uint16_t usart1RxWriteIndex(void)
 {
-    if (huart->Instance != USART1_CFG_PERIPH)
-    {
-        return;
-    }
+    uint16_t received = USART1_RX_DMA_BUF_SIZE -
+                        (uint16_t)__HAL_DMA_GET_COUNTER(s_uartHandle.hdmarx);
 
-    if ((s_rxStatus & USART1_RX_STA_COMPLETE) == 0)     /* 数据接收未完成时处理 */
-    {
-        uint16_t recvLen = s_rxStatus & USART1_RX_STA_LEN_MASK;
-
-        if (s_rxStatus & USART1_RX_STA_HAS_CR)          /* 已收到 \r，等待 \n 结束 */
-        {
-            if (s_rxTmpBuf[0] != '\n')
-            {
-                s_rxStatus = 0;                         /* 协议异常，重置状态 */
-                memset(s_rxBuffer, 0, USART1_MAX_RECV_LEN);
-            }
-            else
-            {
-                s_rxStatus |= USART1_RX_STA_COMPLETE;
-                if (recvLen < USART1_MAX_RECV_LEN - 1)
-                {
-                    s_rxBuffer[recvLen] = '\0';
-                }
-                else
-                {
-                    s_rxBuffer[USART1_MAX_RECV_LEN - 1] = '\0';
-                }
-            }
-        }
-        else                                            /* 未收到 \r，继续接收数据 */
-        {
-            if (s_rxTmpBuf[0] == '\r')
-            {
-                s_rxStatus |= USART1_RX_STA_HAS_CR;
-            }
-            else if (recvLen < USART1_MAX_RECV_LEN - 1) /* 预留 \r\n 结束符位置 */
-            {
-                s_rxBuffer[recvLen] = s_rxTmpBuf[0];
-                s_rxStatus++;
-            }
-            else
-            {
-                s_rxStatus = 0;                         /* 接收溢出，重置状态 */
-                memset(s_rxBuffer, 0, USART1_MAX_RECV_LEN);
-            }
-        }
-    }
-
-    /* 必须重新启动接收，否则只接收一次 */
-    if (HAL_UART_Receive_IT(&s_uartHandle, s_rxTmpBuf, USART1_RX_BUF_SIZE) != HAL_OK)
-    {
-        s_rxStatus = 0;
-        memset(s_rxBuffer, 0, USART1_MAX_RECV_LEN);
-    }
+    return received & RX_DMA_MASK;
 }
 
 /**
- * @brief   串口1中断服务函数（转发到 HAL 通用中断处理）
+ * @brief   获取当前可读字节数
  */
-void USART1_IRQHandler(void)
+uint16_t usart1RxAvailable(void)
 {
-    HAL_UART_IRQHandler(&s_uartHandle);
+    return (usart1RxWriteIndex() - s_rxReadIndex) & RX_DMA_MASK;
 }
 
-uint8_t *usart1GetRxBuffer(void)
+/**
+ * @brief   读 1 字节（非阻塞）
+ * @param   pData : 数据指针
+ * @retval  1 读取成功；0 无数据
+ */
+uint8_t usart1ReadByte(uint8_t *pData)
 {
-    return s_rxBuffer;
+    if (pData == NULL || usart1RxAvailable() == 0)
+    {
+        return 0;
+    }
+
+    *pData = s_rxDmaBuf[s_rxReadIndex];
+    s_rxReadIndex = (s_rxReadIndex + 1) & RX_DMA_MASK;
+
+    return 1;
 }
 
-uint16_t usart1GetRxStatus(void)
+/**
+ * @brief   读多个字节（非阻塞，最多返回当前可读数量）
+ * @param   pBuf : 数据缓冲
+ * @param   len  : 期望读取字节数
+ * @retval  实际读取字节数
+ * @note    环形回绕最多两次 memcpy；调用方保证单任务访问（单消费者模型）
+ */
+uint16_t usart1ReadBytes(uint8_t *pBuf, uint16_t len)
 {
-    return s_rxStatus;
+    uint16_t avail;
+    uint16_t firstSeg;
+
+    if (pBuf == NULL || len == 0)
+    {
+        return 0;
+    }
+
+    avail = usart1RxAvailable();
+    if (len > avail)
+    {
+        len = avail;
+    }
+
+    firstSeg = USART1_RX_DMA_BUF_SIZE - s_rxReadIndex;      /* 到缓冲区末尾的连续段长度 */
+    if (len <= firstSeg)
+    {
+        memcpy(pBuf, &s_rxDmaBuf[s_rxReadIndex], len);
+    }
+    else
+    {
+        memcpy(pBuf, &s_rxDmaBuf[s_rxReadIndex], firstSeg);
+        memcpy(pBuf + firstSeg, s_rxDmaBuf, len - firstSeg);
+    }
+
+    s_rxReadIndex = (s_rxReadIndex + len) & RX_DMA_MASK;
+
+    return len;
 }
 
-void usart1ClearRxStatus(void)
+/**
+ * @brief   清空接收缓冲区（丢弃全部未读数据）
+ */
+void usart1FlushRx(void)
 {
-    s_rxStatus = 0;
-    memset(s_rxBuffer, 0, USART1_MAX_RECV_LEN);
+    s_rxReadIndex = usart1RxWriteIndex();
+}
+
+/**
+ * @brief   帧结束（总线空闲）回调（弱函数，应用层可重写）
+ * @param   len : 当前缓冲内可读字节数（即本帧长度）
+ * @note    在 USART 中断上下文中执行
+ */
+void usart1RxIdleHook(uint16_t len) __attribute__((weak));
+void usart1RxIdleHook(uint16_t len)
+{
+    (void)len;
 }
 
 #endif /* USART1_RX_ENABLE */
 
+/* ==================== 中断服务函数 ==================== */
+#if USART1_RX_ENABLE
+/**
+ * @brief   串口1中断服务函数
+ * @note    1. IDLE（帧结束）与 ORE（溢出）标志先手动清除：
+ *             读 SR 后再读 DR 即清标志（DMA 模式下读 DR 不影响接收数据）
+ *          2. 其余错误经 HAL 通用处理；HAL 因错误停掉 DMA 接收时自动重启
+ */
+void USART1_IRQHandler(void)
+{
+    uint32_t sr = USART1_CFG_PERIPH->SR;
+
+    if (sr & (USART_SR_IDLE | USART_SR_ORE))
+    {
+        (void)USART1_CFG_PERIPH->DR;        /* 清 IDLE/ORE 标志 */
+
+        if (sr & USART_SR_IDLE)
+        {
+            usart1RxIdleHook(usart1RxAvailable());
+        }
+    }
+
+    HAL_UART_IRQHandler(&s_uartHandle);
+
+    /* HAL 错误路径会停掉 DMA 接收（RxState 回到 READY），此处自动重启 */
+    if (s_uartHandle.RxState == HAL_UART_STATE_READY)
+    {
+        HAL_UART_Receive_DMA(&s_uartHandle, s_rxDmaBuf, USART1_RX_DMA_BUF_SIZE);
+    }
+}
+
+/**
+ * @brief   接收 DMA 中断服务函数（环形模式下每个周期触发，维护 HAL 状态机）
+ */
+void USART1_RX_DMA_IRQHandler(void)
+{
+    HAL_DMA_IRQHandler(s_uartHandle.hdmarx);
+}
+#endif /* USART1_RX_ENABLE */
+
+/**
+ * @brief   发送 DMA 中断服务函数
+ */
+void USART1_TX_DMA_IRQHandler(void)
+{
+    HAL_DMA_IRQHandler(s_uartHandle.hdmatx);
+}
+
+/* ==================== 初始化与发送 ==================== */
 /**
  * @brief   串口1初始化
  * @param   baudRate : 波特率
+ * @note    启动环形 DMA 接收并使能 IDLE 帧检测
  */
 void usart1Init(uint32_t baudRate)
 {
@@ -173,8 +245,10 @@ void usart1Init(uint32_t baudRate)
     }
 
 #if USART1_RX_ENABLE
-    /* 启动中断接收（首次触发） */
-    if (HAL_UART_Receive_IT(&s_uartHandle, s_rxTmpBuf, USART1_RX_BUF_SIZE) != HAL_OK)
+    /* 启动环形 DMA 接收 + IDLE 帧结束检测 */
+    __HAL_UART_ENABLE_IT(&s_uartHandle, UART_IT_IDLE);
+
+    if (HAL_UART_Receive_DMA(&s_uartHandle, s_rxDmaBuf, USART1_RX_DMA_BUF_SIZE) != HAL_OK)
     {
         while (1);
     }
@@ -183,6 +257,7 @@ void usart1Init(uint32_t baudRate)
 
 /**
  * @brief   串口1 MSP 底层初始化（由 HAL_UART_Init 自动调用）
+ * @note    配置 GPIO、USART 时钟与 RX/TX DMA 通道（RX 为循环模式）
  */
 void HAL_UART_MspInit(UART_HandleTypeDef *huart)
 {
@@ -196,6 +271,8 @@ void HAL_UART_MspInit(UART_HandleTypeDef *huart)
     USART1_RX_GPIO_CLK_ENABLE();
     USART1_TX_GPIO_CLK_ENABLE();
     USART1_CFG_CLK_ENABLE();
+    USART1_RX_DMA_CLK_ENABLE();
+    USART1_TX_DMA_CLK_ENABLE();
 
     /* TX 引脚 */
     gpioInitStruct.Pin = USART1_TX_GPIO_PIN;
@@ -211,15 +288,48 @@ void HAL_UART_MspInit(UART_HandleTypeDef *huart)
     HAL_GPIO_Init(USART1_RX_GPIO_PORT, &gpioInitStruct);
 
 #if USART1_RX_ENABLE
+    /* RX DMA：外设 -> 内存，循环模式（环形缓冲核心） */
+    s_uartRxDma.Instance = USART1_RX_DMA_CHANNEL;
+    s_uartRxDma.Init.Direction = DMA_PERIPH_TO_MEMORY;
+    s_uartRxDma.Init.PeriphInc = DMA_PINC_DISABLE;
+    s_uartRxDma.Init.MemInc = DMA_MINC_ENABLE;
+    s_uartRxDma.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+    s_uartRxDma.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+    s_uartRxDma.Init.Mode = DMA_CIRCULAR;
+    s_uartRxDma.Init.Priority = DMA_PRIORITY_HIGH;
+    HAL_DMA_Init(&s_uartRxDma);
+    __HAL_LINKDMA(huart, hdmarx, s_uartRxDma);
+
+    HAL_NVIC_SetPriority(USART1_RX_DMA_IRQn, 3, 2);
+    HAL_NVIC_EnableIRQ(USART1_RX_DMA_IRQn);
+#endif
+
+    /* TX DMA：内存 -> 外设，普通模式 */
+    s_uartTxDma.Instance = USART1_TX_DMA_CHANNEL;
+    s_uartTxDma.Init.Direction = DMA_MEMORY_TO_PERIPH;
+    s_uartTxDma.Init.PeriphInc = DMA_PINC_DISABLE;
+    s_uartTxDma.Init.MemInc = DMA_MINC_ENABLE;
+    s_uartTxDma.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+    s_uartTxDma.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+    s_uartTxDma.Init.Mode = DMA_NORMAL;
+    s_uartTxDma.Init.Priority = DMA_PRIORITY_HIGH;
+    HAL_DMA_Init(&s_uartTxDma);
+    __HAL_LINKDMA(huart, hdmatx, s_uartTxDma);
+
+    HAL_NVIC_SetPriority(USART1_TX_DMA_IRQn, 3, 1);
+    HAL_NVIC_EnableIRQ(USART1_TX_DMA_IRQn);
+
+    /* USART 中断（含 IDLE/ORE 帧处理） */
     HAL_NVIC_EnableIRQ(USART1_CFG_IRQn);
     HAL_NVIC_SetPriority(USART1_CFG_IRQn, 3, 3);     /* 抢占优先级 3，子优先级 3 */
-#endif
 }
 
 /**
- * @brief   串口1阻塞发送（寄存器直发，发送完成后等待 TC）
+ * @brief   串口1阻塞发送（DMA 搬运）
  * @param   pData : 数据指针
  * @param   len   : 数据长度
+ * @note    函数返回时数据已全部移出（含末字节移位完成），
+ *          与原寄存器直发语义一致；CPU 无需逐字节等待 TXE
  */
 void usart1SendBytes(uint8_t *pData, uint16_t len)
 {
@@ -228,11 +338,15 @@ void usart1SendBytes(uint8_t *pData, uint16_t len)
         return;
     }
 
-    for (uint16_t i = 0; i < len; i++)
+    /* 等待上一次发送完成（兼容连续调用） */
+    while (s_uartHandle.gState != HAL_UART_STATE_READY);
+
+    if (HAL_UART_Transmit_DMA(&s_uartHandle, pData, len) != HAL_OK)
     {
-        while ((USART1_CFG_PERIPH->SR & USART_SR_TXE) == 0);
-        USART1_CFG_PERIPH->DR = pData[i];
+        return;
     }
 
-    while ((USART1_CFG_PERIPH->SR & USART_SR_TC) == 0);     /* 等待发送完成 */
+    /* 阻塞等待发送完成 */
+    while (s_uartHandle.gState != HAL_UART_STATE_READY);
+    while ((USART1_CFG_PERIPH->SR & USART_SR_TC) == 0);     /* 等待末字节移位完成 */
 }

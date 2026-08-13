@@ -24,4 +24,15 @@
 #define USART1_CFG_IRQHandler           USART1_IRQHandler
 #define USART1_CFG_CLK_ENABLE()         do{ __HAL_RCC_USART1_CLK_ENABLE(); }while(0)
 
+/* DMA 通道（USART1: RX = DMA1_Channel5，TX = DMA1_Channel4） */
+#define USART1_RX_DMA_CHANNEL           DMA1_Channel5
+#define USART1_RX_DMA_CLK_ENABLE()      do{ __HAL_RCC_DMA1_CLK_ENABLE(); }while(0)
+#define USART1_RX_DMA_IRQn              DMA1_Channel5_IRQn
+#define USART1_RX_DMA_IRQHandler        DMA1_Channel5_IRQHandler
+
+#define USART1_TX_DMA_CHANNEL           DMA1_Channel4
+#define USART1_TX_DMA_CLK_ENABLE()      do{ __HAL_RCC_DMA1_CLK_ENABLE(); }while(0)
+#define USART1_TX_DMA_IRQn              DMA1_Channel4_IRQn
+#define USART1_TX_DMA_IRQHandler        DMA1_Channel4_IRQHandler
+
 #endif /* __BSP_UART_H__ */
