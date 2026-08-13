@@ -15,6 +15,7 @@
 /* 串口驱动配置 */
 #define USART1_RX_ENABLE                1U          /* 1 使能接收，0 关闭 */
 #define USART1_RX_DMA_BUF_SIZE          256U        /* 接收 DMA 缓冲区大小（必须为 2 的幂） */
+#define USART1_TX_BUF_SIZE              256U        /* 发送环形缓冲区大小（必须为 2 的幂） */
 
 /* ==================== 环形缓冲区访问接口 ==================== */
 /* 当前可读字节数（0 ~ USART1_RX_DMA_BUF_SIZE-1） */
@@ -38,7 +39,11 @@ void usart1RxIdleHook(uint16_t len);
 /* ==================== 初始化与发送 ==================== */
 /* 串口1初始化（含环形 DMA 接收启动） */
 void usart1Init(uint32_t baudRate);
-/* 阻塞发送（DMA 搬运，函数返回时数据已全部发出） */
+/* 非阻塞发送：数据入 TX 环形缓冲后立即返回（缓冲满时等待消费） */
+void usart1SendAsync(uint8_t *pData, uint16_t len);
+/* 发送完成查询：1 表示缓冲已排空且末字节移位完成 */
+uint8_t usart1TxDone(void);
+/* 阻塞发送：入队后等待排空，返回时数据已全部发出 */
 void usart1SendBytes(uint8_t *pData, uint16_t len);
 
 #endif /* __USART_H__ */

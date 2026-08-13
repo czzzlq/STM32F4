@@ -3,12 +3,15 @@
  * @brief   串口1驱动实现（环形缓冲区 + DMA 收发 + printf 重定向 + 半主机禁用）
  * @note    接收：DMA 循环模式直接写入环形缓冲（CPU 零拷贝），
  *          读写位置由 NDTR 计数器与读指针推算，单生产者（DMA）单消费者模型无需加锁；
- *          总线空闲（IDLE）中断通知帧结束
- * @note    发送：DMA 搬运 + 阻塞等待，printf 仍走寄存器直发（逐字符 DMA 开销过大）；
- *          printf 与 DMA 发送不可并发（fputc 内部会等待 DMA 发送完成）
+ *          总线空闲（IDLE）中断通知帧结束（信号量唤醒 usart1WaitFrame）
+ * @note    发送：统一走 TX 环形缓冲（printf 与数据发送共用一条数据流，不会交叉）：
+ *          fputc/SendAsync 入队即返回，DMA 空闲时由 Kick 搬运，
+ *          发送完成中断续传下一段直到排空；SendBytes 为入队+等待排空的阻塞版。
+ *          缓冲满时产生背压等待（printf 仅限任务上下文调用）
  */
 #include "usart.h"
 #include "os_wrapper.h"
+#include "delay.h"
 #include <string.h>
 
 static UART_HandleTypeDef s_uartHandle;
@@ -19,6 +22,12 @@ static DMA_HandleTypeDef s_uartTxDma;
 static uint8_t s_rxDmaBuf[USART1_RX_DMA_BUF_SIZE];
 static uint16_t s_rxReadIndex = 0;      /* 消费者读指针 */
 
+/* 发送环形缓冲（printf 与数据发送统一数据流） */
+static uint8_t s_txBuf[USART1_TX_BUF_SIZE];
+static volatile uint16_t s_txReadIndex = 0;     /* DMA 消费指针 */
+static volatile uint16_t s_txWriteIndex = 0;    /* 生产者写指针 */
+static uint16_t s_txSendLen = 0;                /* 当前 DMA 段长度 */
+
 #if OS_USE_FREERTOS
 static os_sem_handle_t s_rxFrameSem = NULL;     /* 帧到达信号量 */
 #else
@@ -26,6 +35,7 @@ static volatile uint8_t s_rxFrameFlag = 0;      /* 裸机模式：帧到达标�
 #endif
 
 #define RX_DMA_MASK     (USART1_RX_DMA_BUF_SIZE - 1)
+#define TX_DMA_MASK     (USART1_TX_BUF_SIZE - 1)
 
 /* ==================== 半主机模式禁用 ==================== */
 #if (__ARMCC_VERSION >= 6010050)    /* AC6 */
@@ -68,16 +78,82 @@ char *_sys_command_string(char *cmd, int len)
 FILE __stdout;      /* 标准输出（printf 默认使用） */
 
 /**
- * @brief   fputc 重定向：printf 最终调用此函数，寄存器直发到串口1
- * @note    先等待 DMA 发送结束，避免与 DMA 数据流交叉
+ * @brief   启动/续传 TX 环形缓冲的 DMA 搬运
+ * @note    DMA 空闲且缓冲非空时，搬运读指针处的一段连续数据
+ */
+static void usart1TxKick(void)
+{
+    uint16_t avail;
+
+    if (s_uartHandle.gState != HAL_UART_STATE_READY)
+    {
+        return;                     /* 搬运进行中，由完成中断续传 */
+    }
+
+    avail = (s_txWriteIndex - s_txReadIndex) & TX_DMA_MASK;
+    if (avail == 0)
+    {
+        return;
+    }
+
+    /* 环形回绕：每次最多搬运到缓冲末尾的连续段 */
+    uint16_t firstSeg = USART1_TX_BUF_SIZE - s_txReadIndex;
+    if (avail > firstSeg)
+    {
+        avail = firstSeg;
+    }
+
+    s_txSendLen = avail;
+    HAL_UART_Transmit_DMA(&s_uartHandle, &s_txBuf[s_txReadIndex], avail);
+}
+
+/**
+ * @brief   发送完成中断回调：推进消费指针并续传下一段
+ */
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance != USART1_CFG_PERIPH)
+    {
+        return;
+    }
+
+    s_txReadIndex = (s_txReadIndex + s_txSendLen) & TX_DMA_MASK;
+    usart1TxKick();
+}
+
+/**
+ * @brief   fputc 重定向：printf 最终调用此函数
+ * @note    字符入 TX 环形缓冲后立即返回（缓冲式，打印不阻塞）；
+ *          缓冲满时产生背压等待。仅限任务上下文调用（入队需临界区保护）
  */
 int fputc(int ch, FILE *f)
 {
     (void)f;
 
-    while (s_uartHandle.gState != HAL_UART_STATE_READY);     /* 等待 DMA 发送完成 */
-    while ((USART1_CFG_PERIPH->SR & USART_SR_TXE) == 0);
-    USART1_CFG_PERIPH->DR = (uint8_t)ch;
+    /* 初始化前打印：DMA 未就绪，退回寄存器直发（保留早期打印能力） */
+    if (s_uartHandle.gState == HAL_UART_STATE_RESET)
+    {
+        while ((USART1_CFG_PERIPH->SR & USART_SR_TXE) == 0);
+        USART1_CFG_PERIPH->DR = (uint8_t)ch;
+        return ch;
+    }
+
+    os_enter_critical();
+
+    /* 背压：缓冲满则等待 DMA 消费 */
+    while (((s_txWriteIndex + 1) & TX_DMA_MASK) == s_txReadIndex)
+    {
+        os_exit_critical();
+        systickDelay_us(50);
+        os_enter_critical();
+    }
+
+    s_txBuf[s_txWriteIndex] = (uint8_t)ch;
+    s_txWriteIndex = (s_txWriteIndex + 1) & TX_DMA_MASK;
+
+    os_exit_critical();
+
+    usart1TxKick();
 
     return ch;
 }
@@ -382,28 +458,75 @@ void HAL_UART_MspInit(UART_HandleTypeDef *huart)
 }
 
 /**
- * @brief   串口1阻塞发送（DMA 搬运）
- * @param   pData : 数据指针
+ * @brief   非阻塞发送：数据入 TX 环形缓冲后立即返回
+ * @param   pData : 数据指针（入队即完成拷贝，返回后可复用缓冲）
  * @param   len   : 数据长度
- * @note    函数返回时数据已全部移出（含末字节移位完成），
- *          与原寄存器直发语义一致；CPU 无需逐字节等待 TXE
+ * @note    缓冲满时产生背压等待；DMA 搬运由完成中断自动续传
  */
-void usart1SendBytes(uint8_t *pData, uint16_t len)
+void usart1SendAsync(uint8_t *pData, uint16_t len)
 {
     if (pData == NULL || len == 0)
     {
         return;
     }
 
-    /* 等待上一次发送完成（兼容连续调用） */
-    while (s_uartHandle.gState != HAL_UART_STATE_READY);
-
-    if (HAL_UART_Transmit_DMA(&s_uartHandle, pData, len) != HAL_OK)
+    for (uint16_t i = 0; i < len; i++)
     {
-        return;
+        os_enter_critical();
+
+        while (((s_txWriteIndex + 1) & TX_DMA_MASK) == s_txReadIndex)
+        {
+            os_exit_critical();
+            systickDelay_us(50);
+            os_enter_critical();
+        }
+
+        s_txBuf[s_txWriteIndex] = (uint8_t)pData[i];
+        s_txWriteIndex = (s_txWriteIndex + 1) & TX_DMA_MASK;
+
+        os_exit_critical();
     }
 
-    /* 阻塞等待发送完成 */
-    while (s_uartHandle.gState != HAL_UART_STATE_READY);
-    while ((USART1_CFG_PERIPH->SR & USART_SR_TC) == 0);     /* 等待末字节移位完成 */
+    usart1TxKick();
+}
+
+/**
+ * @brief   发送完成查询
+ * @retval  1 缓冲已排空且末字节移位完成；0 发送进行中
+ */
+uint8_t usart1TxDone(void)
+{
+    if (((s_txWriteIndex - s_txReadIndex) & TX_DMA_MASK) != 0)
+    {
+        return 0;       /* 缓冲中仍有数据 */
+    }
+
+    if (s_uartHandle.gState != HAL_UART_STATE_READY)
+    {
+        return 0;       /* 最后一段仍在搬运 */
+    }
+
+    if ((USART1_CFG_PERIPH->SR & USART_SR_TC) == 0)
+    {
+        return 0;       /* 末字节仍在移位 */
+    }
+
+    return 1;
+}
+
+/**
+ * @brief   串口1阻塞发送（入队 + 等待排空）
+ * @param   pData : 数据指针
+ * @param   len   : 数据长度
+ * @note    函数返回时数据已全部发出（与原语义一致）；
+ *          等待用 SysTick 忙等，调度器启动前后均可调用
+ */
+void usart1SendBytes(uint8_t *pData, uint16_t len)
+{
+    usart1SendAsync(pData, len);
+
+    while (!usart1TxDone())
+    {
+        systickDelay_us(100);
+    }
 }
