@@ -32,7 +32,7 @@ static uint32_t s_cntOverflow = 0;  /* 溢出次数 */
  * @brief   通用定时器定时中断初始化
  * @param   arr : 自动重装值
  * @param   psc : 时钟预分频数
- * @note    溢出周期 Tout = ((arr+1) * (psc+1)) / 72MHz
+ * @note    溢出周期 Tout = ((arr+1) * (psc+1)) / 84MHz（TIM3 挂 APB1，定时器时钟为其 2 倍）
  */
 void gtim_timx_int_init(uint16_t arr, uint16_t psc)
 {
@@ -76,7 +76,7 @@ void gtim_timx_pwm_chy_init(uint16_t arr, uint16_t psc)
 {
     GPIO_InitTypeDef gpioInitStruct = {0};
 
-    /* 输出引脚（含重映射） */
+    /* 输出引脚（F4：PB5 复用为 TIM3_CH2，AF2；无 AFIO 重映射寄存器） */
     GTIM_TIMX_PWM_CHY_GPIO_CLK_ENABLE();
     GTIM_TIMX_PWM_CHY_CLK_ENABLE();
     GTIM_TIMX_PWM_CHY_GPIO_REMAP();
@@ -85,6 +85,7 @@ void gtim_timx_pwm_chy_init(uint16_t arr, uint16_t psc)
     gpioInitStruct.Mode = GPIO_MODE_AF_PP;
     gpioInitStruct.Pull = GPIO_PULLUP;
     gpioInitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+    gpioInitStruct.Alternate = GTIM_TIMX_PWM_CHY_GPIO_AF;   /* F4 由复用功能选通，无需 AFIO 重映射 */
     HAL_GPIO_Init(GTIM_TIMX_PWM_CHY_GPIO_PORT, &gpioInitStruct);
 
     s_timPwmHandle.Instance = GTIM_TIMX_PWM;
@@ -136,6 +137,7 @@ void gtim_timx_cap_chy_init(uint16_t arr, uint16_t psc)
     gpioInitStruct.Mode = GPIO_MODE_AF_PP;
     gpioInitStruct.Pull = GPIO_PULLDOWN;
     gpioInitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+    gpioInitStruct.Alternate = GTIM_TIMX_CAP_CHY_GPIO_AF;
     HAL_GPIO_Init(GTIM_TIMX_CAP_CHY_GPIO_PORT, &gpioInitStruct);
 
     s_timCapHandle.Instance = GTIM_TIMX_CAP;
@@ -233,6 +235,7 @@ void gtim_timx_cnt_chy_init(uint16_t psc)
     gpioInitStruct.Mode = GPIO_MODE_AF_PP;
     gpioInitStruct.Pull = GPIO_PULLDOWN;
     gpioInitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+    gpioInitStruct.Alternate = GTIM_TIMX_CNT_CHY_GPIO_AF;
     HAL_GPIO_Init(GTIM_TIMX_CNT_CHY_GPIO_PORT, &gpioInitStruct);
 
     s_timCntHandle.Instance = GTIM_TIMX_CNT;

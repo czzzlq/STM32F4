@@ -4,7 +4,7 @@
  * @note    使能后不可关闭：超时前必须周期性调用 drv_iwdg_feed()
  */
 #include "drv_iwdg.h"
-#include "stm32f1xx_hal.h"
+#include "stm32f4xx_hal.h"
 
 static IWDG_HandleTypeDef s_iwdgHandle;
 

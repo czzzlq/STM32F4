@@ -7,7 +7,7 @@
 #define __DRV_KEY_H__
 
 #include "common_types.h"
-#include "stm32f1xx_hal.h"
+#include "stm32f4xx_hal.h"
 
 /* 按键 ID */
 typedef enum

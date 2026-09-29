@@ -30,12 +30,41 @@ static os_task_handle_t s_ledTaskHandle;
 static os_task_handle_t s_uartTaskHandle;
 
 /* ==================== 自检用静态缓冲 ==================== */
-/* 测试区避开 malloc 外部内存池区（0x68000000 ~ 0x68000022），从 0x1000 开始 */
+/* 外部 SRAM 的整片 1MB 都由 malloc 外部池托管（池 960KB + 状态表 60KB），
+ * 所以原始读写自检不能再用固定物理偏移乱写，改为从池里临时借一块、用完归还。
+ * 块内仍用 SRAM_TEST_OFFSET 起的偏移，保持原来的对齐路径覆盖不变。 */
 #define SRAM_TEST_OFFSET    0x1000
 #define SRAM_TEST_SIZE      1024
+#define SRAM_TEST_BLOCK     0x2000      /* 借用的块大小（含 +2048 单字节用例的余量） */
 
 static uint8_t s_sramTestBuf[SRAM_TEST_SIZE];       /* 写入数据 */
 static uint8_t s_sramTestCheck[SRAM_TEST_SIZE];     /* 回读校验数据 */
+static uint32_t s_sramTestOff;                      /* 本次自检块相对 SRAM_BASE_ADDR 的偏移 */
+
+/**
+ * @brief   从外部池借一块原始读写测试区
+ * @retval  1 成功；0 无空闲块
+ */
+static uint8_t sram_test_block_acquire(void)
+{
+    uint8_t *blk = (uint8_t *)mymalloc(SRAMEX, SRAM_TEST_BLOCK);
+
+    if (blk == NULL)
+    {
+        return 0;
+    }
+
+    s_sramTestOff = (uint32_t)(blk - (uint8_t *)SRAM_BASE_ADDR);
+    return 1;
+}
+
+/**
+ * @brief   归还原始读写测试区
+ */
+static void sram_test_block_release(void)
+{
+    myfree(SRAMEX, (void *)((uint8_t *)SRAM_BASE_ADDR + s_sramTestOff));
+}
 
 /**
  * @brief   探测外部 SRAM 是否存在
@@ -43,18 +72,36 @@ static uint8_t s_sramTestCheck[SRAM_TEST_SIZE];     /* 回读校验数据 */
  * @note    探测方法：连续写入 8 个互不相同的值后再整体读回比对。
  *          无芯片时总线行为不可信（可能浮空返回固定电平，或返回
  *          最后一次写入的值），单字节写读探测会假阳性，多值连续
- *          探测可保证任一异常总线行为都会比对失败
+ *          探测可保证任一异常总线行为都会比对失败。
+ *          探测区从外部池临时借来（池在 bsp_init 中已初始化）；无芯片时
+ *          分配器读到的状态表是浮空数据，最坏只会给出一个越界受限于池范围
+ *          的伪指针或返回 NULL，两种情况都会让比对失败，判定依然正确
  */
 static uint8_t sram_probe(void)
 {
     static const uint8_t probePattern[8] = {0x00, 0xFF, 0x55, 0xAA, 0x33, 0xCC, 0xA5, 0x5A};
     uint8_t probeCheck[8];
+    uint8_t *blk;
+    uint32_t off;
+    uint8_t result;
 
-    sram_write((uint8_t *)probePattern, SRAM_TEST_OFFSET, sizeof(probePattern));
+    blk = (uint8_t *)mymalloc(SRAMEX, 32);
+    if (blk == NULL)
+    {
+        return 0;
+    }
+
+    off = (uint32_t)(blk - (uint8_t *)SRAM_BASE_ADDR);
+
+    sram_write((uint8_t *)probePattern, off, sizeof(probePattern));
     memset(probeCheck, 0, sizeof(probeCheck));
-    sram_read(probeCheck, SRAM_TEST_OFFSET, sizeof(probePattern));
+    sram_read(probeCheck, off, sizeof(probePattern));
 
-    return (memcmp(probePattern, probeCheck, sizeof(probePattern)) == 0) ? 1 : 0;
+    result = (memcmp(probePattern, probeCheck, sizeof(probePattern)) == 0) ? 1 : 0;
+
+    myfree(SRAMEX, blk);
+
+    return result;
 }
 
 /**
@@ -76,6 +123,13 @@ static void sram_self_test(void)
         return;
     }
 
+    /* 从外部池借一块作为原始读写区（整片 SRAM 已由池托管，不能再按固定物理地址乱写） */
+    if (!sram_test_block_acquire())
+    {
+        printf("[SRAM] no free pool block, self test skipped\r\n");
+        return;
+    }
+
     /* 生成测试模式（全字节遍历） */
     for (i = 0; i < SRAM_TEST_SIZE; i++)
     {
@@ -83,38 +137,40 @@ static void sram_self_test(void)
     }
 
     /* A. 双 4 字节对齐 + 1024 字节（32 位拷贝路径） */
-    sram_write(s_sramTestBuf, SRAM_TEST_OFFSET, 1024);
+    sram_write(s_sramTestBuf, s_sramTestOff + SRAM_TEST_OFFSET, 1024);
     memset(s_sramTestCheck, 0, SRAM_TEST_SIZE);
-    sram_read(s_sramTestCheck, SRAM_TEST_OFFSET, 1024);
+    sram_read(s_sramTestCheck, s_sramTestOff + SRAM_TEST_OFFSET, 1024);
     if (memcmp(s_sramTestBuf, s_sramTestCheck, 1024) != 0)
     {
         errCount++;
     }
 
     /* B. 奇地址 + 1013 字节（头部字节 + 16 位路径） */
-    sram_write(s_sramTestBuf, SRAM_TEST_OFFSET + 1, 1013);
+    sram_write(s_sramTestBuf, s_sramTestOff + SRAM_TEST_OFFSET + 1, 1013);
     memset(s_sramTestCheck, 0, SRAM_TEST_SIZE);
-    sram_read(s_sramTestCheck, SRAM_TEST_OFFSET + 1, 1013);
+    sram_read(s_sramTestCheck, s_sramTestOff + SRAM_TEST_OFFSET + 1, 1013);
     if (memcmp(s_sramTestBuf, s_sramTestCheck, 1013) != 0)
     {
         errCount++;
     }
 
     /* C. 偶地址 + 1023 字节（16 位路径 + 尾部字节） */
-    sram_write(s_sramTestBuf, SRAM_TEST_OFFSET, 1023);
+    sram_write(s_sramTestBuf, s_sramTestOff + SRAM_TEST_OFFSET, 1023);
     memset(s_sramTestCheck, 0, SRAM_TEST_SIZE);
-    sram_read(s_sramTestCheck, SRAM_TEST_OFFSET, 1023);
+    sram_read(s_sramTestCheck, s_sramTestOff + SRAM_TEST_OFFSET, 1023);
     if (memcmp(s_sramTestBuf, s_sramTestCheck, 1023) != 0)
     {
         errCount++;
     }
 
     /* D. 单字节接口 */
-    sram_test_write(SRAM_TEST_OFFSET + 2048, 0x5A);
-    if (sram_test_read(SRAM_TEST_OFFSET + 2048) != 0x5A)
+    sram_test_write(s_sramTestOff + SRAM_TEST_OFFSET + 2048, 0x5A);
+    if (sram_test_read(s_sramTestOff + SRAM_TEST_OFFSET + 2048) != 0x5A)
     {
         errCount++;
     }
+
+    sram_test_block_release();
 
     printf("[SRAM] self test: %s (%d errors)\r\n", (errCount == 0) ? "PASS" : "FAIL", errCount);
 }
@@ -138,7 +194,7 @@ static void malloc_self_test(void)
 
     if (hasSramEx)
     {
-        p3 = (uint8_t *)mymalloc(SRAMEX, 16);   /* 外部 SRAM：16 字节（1 块，池共 32 字节） */
+        p3 = (uint8_t *)mymalloc(SRAMEX, 512 * 1024);   /* 外部 SRAM：512KB（池共 960KB） */
         printf(" p3=0x%x\r\n", (unsigned int)p3);
     }
     else
@@ -167,10 +223,26 @@ static void malloc_self_test(void)
 
     if (hasSramEx)
     {
-        for (i = 0; i < 16; i++) p3[i] = 0xA5;
-        for (i = 0; i < 16; i++)
+        /* 大块分配后按首/中/尾抽样读写：一并验证池容量、地址线 A0~A18 与 FSMC 时序 */
+        static const uint32_t sampleOffs[4] = {0, 1024, 256 * 1024, 512 * 1024 - 16};
+
+        for (uint32_t k = 0; k < 4; k++)
         {
-            if (p3[i] != 0xA5) errCount++;
+            for (i = 0; i < 16; i++)
+            {
+                p3[sampleOffs[k] + i] = (uint8_t)(0xA5 + i);
+            }
+        }
+
+        for (uint32_t k = 0; k < 4; k++)
+        {
+            for (i = 0; i < 16; i++)
+            {
+                if (p3[sampleOffs[k] + i] != (uint8_t)(0xA5 + i))
+                {
+                    errCount++;
+                }
+            }
         }
     }
 

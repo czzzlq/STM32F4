@@ -26,14 +26,16 @@
 
 /* 内存池大小计算：
  * 总占用 = 池大小 + (池大小 / 块大小) * sizeof(MT_TYPE)
- * mem1：内部 SRAM（F103 共 64KB，留出全局变量/栈空间） */
+ * mem1：内部 SRAM（F407 片上 128KB，留出全局变量/栈/FreeRTOS 堆空间） */
 #define MEM1_BLOCK_SIZE         32
 #define MEM1_MAX_SIZE           (30 * 1024)
 #define MEM1_ALLOC_TABLE_SIZE   (MEM1_MAX_SIZE / MEM1_BLOCK_SIZE)
 
-/* mem2：外部 SRAM（按实际容量配置） */
+/* mem2：外部 SRAM（XM8A51216V33A，512K×16 = 1MB，挂 FSMC NE3）
+ * 池 960KB + 状态表 (960KB/32)×2B = 60KB，合计 1020KB，正好占满
+ * 0x68000000~0x680FFFFF：池 = 0x68000000~0x680EFFFF，状态表 = 0x680F0000~0x680FFFFF */
 #define MEM2_BLOCK_SIZE         32
-#define MEM2_MAX_SIZE           (1 * 32)
+#define MEM2_MAX_SIZE           (960 * 1024)
 #define MEM2_ALLOC_TABLE_SIZE   (MEM2_MAX_SIZE / MEM2_BLOCK_SIZE)
 
 /* 内存管理结构体 */

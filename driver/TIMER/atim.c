@@ -16,7 +16,6 @@ static TIM_BreakDeadTimeConfigTypeDef s_breakDeadTimeConfig = {0};
 /* PWM 输入测量状态
  * s_pwminSta : 0 未成功测量；1 测量成功 */
 static uint8_t  s_pwminSta  = 0;
-static uint16_t s_pwminPsc  = 0;    /* PWM 输入预分频系数 */
 static uint32_t s_pwminHighVal = 0; /* PWM 高电平时间 */
 static uint32_t s_pwminCycleVal = 0;/* PWM 周期 */
 
@@ -42,10 +41,11 @@ void atim_timx_comp_pwm_init(uint16_t arr, uint16_t psc)
     ATIM_TIMX_COMP_CH3_GPIO_CLK_ENABLE();
     ATIM_TIMX_COMP_CH4_GPIO_CLK_ENABLE();
 
-    /* TIM8 CH1~CH4 默认映射 PC6/PC7/PC8/PC9，无需重映射 */
+    /* TIM8 CH1~CH4 = PC6/PC7/PC8/PC9，F4 上由复用功能 AF3 直接选通（无重映射寄存器） */
     gpioInitStruct.Mode = GPIO_MODE_AF_PP;
     gpioInitStruct.Pull = GPIO_NOPULL;
     gpioInitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+    gpioInitStruct.Alternate = ATIM_TIMX_COMP_GPIO_AF;
 
     gpioInitStruct.Pin = ATIM_TIMX_COMP_CH1_GPIO_PIN;
     HAL_GPIO_Init(ATIM_TIMX_COMP_CH1_GPIO_PORT, &gpioInitStruct);
@@ -113,6 +113,7 @@ void atim_timx_cplm_pwm_init(uint16_t arr, uint16_t psc)
     gpioInitStruct.Mode = GPIO_MODE_AF_PP;
     gpioInitStruct.Pull = GPIO_PULLUP;
     gpioInitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+    gpioInitStruct.Alternate = ATIM_TIMX_CPLM_GPIO_AF;   /* PE9/PE8/PE15 = AF1_TIM1 */
 
     gpioInitStruct.Pin = ATIM_TIMX_CPLM_CHY_GPIO_PIN;
     HAL_GPIO_Init(ATIM_TIMX_CPLM_CHY_GPIO_PORT, &gpioInitStruct);
@@ -123,7 +124,7 @@ void atim_timx_cplm_pwm_init(uint16_t arr, uint16_t psc)
     gpioInitStruct.Pin = ATIM_TIMX_CPLM_BKIN_GPIO_PIN;
     HAL_GPIO_Init(ATIM_TIMX_CPLM_BKIN_GPIO_PORT, &gpioInitStruct);
 
-    ATIM_TIMX_CPLM_CHYN_GPIO_REMAP();       /* 完全重映射到 PE8/PE9/PE15 */
+    ATIM_TIMX_CPLM_CHYN_GPIO_REMAP();       /* F4 空宏：PE8/PE9/PE15 由 AF1 直接选通 */
     ATIM_TIMX_CPLM_CLK_ENABLE();
 
     s_cplmPwmHandle.Instance = ATIM_TIMX_CPLM;
@@ -173,7 +174,8 @@ void atim_timx_cplm_pwm_set(uint16_t ccr, uint8_t dtg)
 
 /**
  * @brief   高级定时器 PWM 输入模式初始化
- * @note    使用 psc=0、arr=65535，计数频率 72MHz（约 13.9ns 分辨率）；
+ * @note    使用 psc=0、arr=65535；TIM8 挂 APB2（HCLK/2 ×2 = 168MHz），
+ *          计数分辨率约 5.95ns；
  *          CH1 上升沿捕获周期，CH2 下降沿捕获高电平时间
  */
 void atim_timx_pwmin_chy_init(void)
@@ -183,13 +185,13 @@ void atim_timx_pwmin_chy_init(void)
     GPIO_InitTypeDef gpioInitStruct = {0};
 
     ATIM_TIMX_PWMIN_CHY_GPIO_CLK_ENABLE();
-    __HAL_RCC_AFIO_CLK_ENABLE();
-    AFIO->EVCR = ATIM_TIMX_PWMIN_EVCR_VALUE;    /* TIM8_CH1 重映射到 PC6 */
 
+    /* F4 无 AFIO/EVCR：TIM8_CH1 在 PC6 上由复用功能 AF3 直接提供 */
     gpioInitStruct.Pin = ATIM_TIMX_PWMIN_CHY_GPIO_PIN;
     gpioInitStruct.Mode = GPIO_MODE_AF_PP;
     gpioInitStruct.Pull = GPIO_PULLDOWN;
     gpioInitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+    gpioInitStruct.Alternate = ATIM_TIMX_PWMIN_CHY_GPIO_AF;
     HAL_GPIO_Init(ATIM_TIMX_PWMIN_CHY_GPIO_PORT, &gpioInitStruct);
 
     ATIM_TIMX_PWMIN_CHY_CLK_ENABLE();

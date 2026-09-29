@@ -496,10 +496,11 @@ void HAL_SRAM_MspInit(SRAM_HandleTypeDef *hsram)
     __HAL_RCC_GPIOD_CLK_ENABLE();
     __HAL_RCC_GPIOE_CLK_ENABLE();
 
-    /* FSMC 数据引脚 */
+    /* FSMC 数据引脚（F4 必须指定复用功能号，否则停在 AF0，信号到不了引脚） */
     gpioInitStruct.Mode = GPIO_MODE_AF_PP;
     gpioInitStruct.Pull = GPIO_PULLUP;
     gpioInitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+    gpioInitStruct.Alternate = GPIO_AF12_FSMC;
 
     gpioInitStruct.Pin = LCD_FSMC_D_GPIO_PINS;
     HAL_GPIO_Init(LCD_FSMC_D_GPIO_PORT, &gpioInitStruct);
@@ -593,10 +594,11 @@ void lcd_init(void)
     LCD_RS_GPIO_CLK_ENABLE();
     LCD_BL_GPIO_CLK_ENABLE();
 
-    /* 控制信号引脚（复用推挽） */
+    /* 控制信号引脚（复用推挽；F4 必须指定 AF12=FSMC，否则停在 AF0） */
     gpioInitStruct.Mode = GPIO_MODE_AF_PP;
     gpioInitStruct.Pull = GPIO_PULLUP;
     gpioInitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+    gpioInitStruct.Alternate = GPIO_AF12_FSMC;
 
     gpioInitStruct.Pin = LCD_CS_GPIO_PIN;
     HAL_GPIO_Init(LCD_CS_GPIO_PORT, &gpioInitStruct);
@@ -631,16 +633,38 @@ void lcd_init(void)
     s_sramHandle.Init.AsynchronousWait = FSMC_ASYNCHRONOUS_WAIT_DISABLE;
     s_sramHandle.Init.WriteBurst = FSMC_WRITE_BURST_DISABLE;
 
-    /* 读时序：DATAST=15，约 222ns（液晶 IC 读数据较慢） */
-    fsmcReadTiming.AddressSetupTime = 0;
+    /* 时序（模式 A；FSMC 时基 = HCLK = 168MHz，1 HCLK ≈ 5.952ns，
+     *      本版 HAL 直接写入 BTR/BWTR，不做 -1 换算，即"值 = 周期数"）
+     *
+     * 器件：NT35510（8080-16 并口），数据手册 §7.6.1 Parallel Interface
+     *       Characteristics (80-Series MCU), P361：
+     *         写：tWC ≥ 33ns、tWRH ≥ 15ns、tWRL ≥ 15ns、tAST(w) ≥ 0ns、tDST ≥ 15ns、tDHT ≥ 10ns
+     *         读(ID)：tRC ≥ 160ns、tRDH ≥ 90ns、tRDL ≥ 45ns、tRAT ≤ 40ns
+     *         读(FM/显存)：tRCFM ≥ 400ns、tRDHFM ≥ 250ns、tRDLFM ≥ 150ns、tRATFM ≤ 150ns
+     *       lcd_read_point 要读显存，故读时序按更严的 FM 档取 */
+
+    /* 读时序：ADDSET=15 → D/CX 建立 15 HCLK = 89ns ≥ tAST(读) 10ns
+     *        DATAST=60 → RDX 低电平 60 HCLK = 357ns ≥ tRDLFM 150ns
+     *                     （且远大于 tRATFM 150ns，数据早已稳定，RDX 上升沿采样有效）
+     *        读周期 = ADDSET+DATAST+2 = 77 HCLK = 458ns ≥ tRCFM 400ns（也 ≥ tRC 160ns）
+     * 偏差说明：tRDHFM（RDX 高电平 ≥250ns）在模式 A 下最多只能做到 (ADDSET+2) = 101ns，
+     *       受 ADDSET ≤ 15 限制无法满足；正点原子官方例程同样如此（该值经实测可用），
+     *       且实际连续读之间有 lcd_rd_data 的软件延时，真实高电平时间还要更长 */
+    fsmcReadTiming.AddressSetupTime = 15;
     fsmcReadTiming.AddressHoldTime = 0;
-    fsmcReadTiming.DataSetupTime = 15;
+    fsmcReadTiming.DataSetupTime = 60;
     fsmcReadTiming.AccessMode = FSMC_ACCESS_MODE_A;
 
-    /* 写时序：DATAST=1，约 28ns（部分 IC 写脉宽要求 50ns） */
-    fsmcWriteTiming.AddressSetupTime = 0;
+    /* 写时序：ADDSET=4 → D/CX 建立 4 HCLK = 23.8ns ≥ tAST(写) 0ns，
+     *                   同时构成 WRX 高电平间隔（≥ tWRH 15ns，含总线开销后更大）
+     *        DATAST=6 → WRX 低电平 6 HCLK = 35.7ns ≥ tWRL 15ns，
+     *                   数据建立时间（数据在 WRX 上升沿前的有效时间）≥ tDST 15ns
+     *        写周期 = ADDSET+DATAST = 10 HCLK = 59.5ns ≥ tWC 33ns（1.8 倍裕量）
+     * 说明：正点原子例程用 0/3（约 18~24ns）换刷新率，属超频使用；如需提速可下调
+     *       DATAST，但须保证 ADDSET+DATAST ≥ 6 HCLK（tWC 33ns）*/
+    fsmcWriteTiming.AddressSetupTime = 4;
     fsmcWriteTiming.AddressHoldTime = 0;
-    fsmcWriteTiming.DataSetupTime = 1;
+    fsmcWriteTiming.DataSetupTime = 6;
     fsmcWriteTiming.AccessMode = FSMC_ACCESS_MODE_A;
 
     HAL_SRAM_Init(&s_sramHandle, &fsmcReadTiming, &fsmcWriteTiming);
@@ -649,23 +673,25 @@ void lcd_init(void)
     /* 依次尝试读取各 IC 的 ID */
     if (!lcd_try_id_probes(s_idProbeGroup1, ARRAY_SIZE(s_idProbeGroup1)))
     {
-        /* NT35510 特殊探测：需解锁寄存器页；C501 读 ID 后需延时等待复位完成 */
-        lcd_write_reg(0xF000, 0x0055);
-        lcd_write_reg(0xF001, 0x00AA);
-        lcd_write_reg(0xF002, 0x0052);
-        lcd_write_reg(0xF003, 0x0008);
-        lcd_write_reg(0xF004, 0x0001);
+        /* NT35510（4.3 寸 480×800）：ID 用 0xDA00/0xDB00/0xDC00 三个寄存器读出，
+         * 依次为 0x00 / 0x80 / 0x00，拼成 0x8000 即 NT35510（项目内部记为 0x5510）。
+         * 注意：0xC500/0xC501 是 SSD1963 的读 ID 寄存器，NT35510 不认，F1 工程沿用的
+         * 这套探测在 NT35510 上永远读不到 0x5510，初始化序列也就不会执行 */
+        lcd_wr_regno(0xDA00);
+        (void)lcd_rd_data();                /* 读回 0x00（丢弃） */
 
-        lcd_wr_regno(0xC500);           /* 读 ID 低 8 位 */
-        lcddev.id = lcd_rd_data();
+        lcd_wr_regno(0xDB00);
+        lcddev.id = lcd_rd_data();          /* 读回 0x80 */
         lcddev.id <<= 8;
 
-        lcd_wr_regno(0xC501);           /* 读 ID 高 8 位（0XC501 是 1963 的软复位指令） */
-        lcddev.id |= lcd_rd_data();
+        lcd_wr_regno(0xDC00);
+        lcddev.id |= lcd_rd_data();         /* 读回 0x00 */
 
-        systickDelay_ms(5);             /* 等待 1963 软复位完成 */
-
-        if (lcddev.id != 0x5510)
+        if (lcddev.id == 0x8000)
+        {
+            lcddev.id = 0x5510;             /* 归一化为项目内部 ID */
+        }
+        else
         {
             lcd_try_id_probes(s_idProbeGroup2, ARRAY_SIZE(s_idProbeGroup2));
         }

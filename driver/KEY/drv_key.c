@@ -135,7 +135,7 @@ status_t drv_key_init(void)
  * @param   key_id : 按键 ID
  * @retval  按键事件 / STATUS_ERR_PARAM（ID 非法）
  */
-drv_key_event_t drv_key_get_event(uint8_t key_id)
+drv_key_event_t drv_key_get_event(drv_key_id_t key_id)
 {
     drv_key_event_t event;
 

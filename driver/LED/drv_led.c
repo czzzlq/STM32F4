@@ -4,7 +4,7 @@
  */
 #include "drv_led.h"
 #include "bsp_gpio.h"
-#include "stm32f1xx_hal.h"
+#include "stm32f4xx_hal.h"
 
 /* LED 硬件描述结构体 */
 typedef struct

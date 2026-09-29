@@ -12,6 +12,7 @@
 #include "usart.h"
 #include "os_wrapper.h"
 #include "delay.h"
+#include "ringbuf.h"
 #include <string.h>
 
 static UART_HandleTypeDef s_uartHandle;
@@ -20,22 +21,18 @@ static DMA_HandleTypeDef s_uartTxDma;
 
 /* 环形接收缓冲（DMA 循环模式写入，2 的幂大小便于掩码取模） */
 static uint8_t s_rxDmaBuf[USART1_RX_DMA_BUF_SIZE];
-static uint16_t s_rxReadIndex = 0;      /* 消费者读指针 */
+static ringbuf_t s_rxRing;              /* 接收环形缓冲 */
 
 /* 发送环形缓冲（printf 与数据发送统一数据流） */
 static uint8_t s_txBuf[USART1_TX_BUF_SIZE];
-static volatile uint16_t s_txReadIndex = 0;     /* DMA 消费指针 */
-static volatile uint16_t s_txWriteIndex = 0;    /* 生产者写指针 */
-static uint16_t s_txSendLen = 0;                /* 当前 DMA 段长度 */
+static ringbuf_t s_txRing;              /* 发送环形缓冲 */
+static uint16_t s_txSendLen = 0;        /* 当前 DMA 段长度 */
 
 #if OS_USE_FREERTOS
 static os_sem_handle_t s_rxFrameSem = NULL;     /* 帧到达信号量 */
 #else
 static volatile uint8_t s_rxFrameFlag = 0;      /* 裸机模式：帧到达标志 */
 #endif
-
-#define RX_DMA_MASK     (USART1_RX_DMA_BUF_SIZE - 1)
-#define TX_DMA_MASK     (USART1_TX_BUF_SIZE - 1)
 
 /* ==================== 半主机模式禁用 ==================== */
 #if (__ARMCC_VERSION >= 6010050)    /* AC6 */
@@ -78,8 +75,43 @@ char *_sys_command_string(char *cmd, int len)
 FILE __stdout;      /* 标准输出（printf 默认使用） */
 
 /**
+ * @brief   寄存器轮询发送（不依赖 DMA/中断）
+ * @param   pData : 数据指针
+ * @param   len   : 字节数
+ * @note    用于两处：1) 上电横幅，便于区分"串口本身不通"与"DMA 链路不通"；
+ *          2) DMA 启动失败时兜底，避免 TX 环形缓冲永久堵塞导致 printf 卡死。
+ *          TXE 等待带超时上限，避免 UART 无时钟时死等。
+ */
+static void usart1SendPolling(const uint8_t *pData, uint16_t len)
+{
+    for (uint16_t i = 0; i < len; i++)
+    {
+        uint32_t guard = 0x100000U;
+
+        while (((USART1_CFG_PERIPH->SR & USART_SR_TXE) == 0) && (--guard != 0))
+        {
+            ;
+        }
+
+        if (guard == 0)
+        {
+            return;                 /* UART 时基异常，放弃本次发送 */
+        }
+
+        USART1_CFG_PERIPH->DR = pData[i];
+    }
+
+    /* 等最后一字节移位完成，保证复位/断电前数据已出 */
+    while (((USART1_CFG_PERIPH->SR & USART_SR_TC) == 0))
+    {
+        ;
+    }
+}
+
+/**
  * @brief   启动/续传 TX 环形缓冲的 DMA 搬运
- * @note    DMA 空闲且缓冲非空时，搬运读指针处的一段连续数据
+ * @note    DMA 空闲且缓冲非空时，搬运读指针处的一段连续数据；
+ *          DMA 启动失败则退回轮询发送，保证 printf 永远有输出
  */
 static void usart1TxKick(void)
 {
@@ -90,21 +122,22 @@ static void usart1TxKick(void)
         return;                     /* 搬运进行中，由完成中断续传 */
     }
 
-    avail = (s_txWriteIndex - s_txReadIndex) & TX_DMA_MASK;
+    /* 环形回绕：每次最多搬运到缓冲末尾的连续段 */
+    avail = ringbuf_read_contig(&s_txRing);
     if (avail == 0)
     {
         return;
     }
 
-    /* 环形回绕：每次最多搬运到缓冲末尾的连续段 */
-    uint16_t firstSeg = USART1_TX_BUF_SIZE - s_txReadIndex;
-    if (avail > firstSeg)
-    {
-        avail = firstSeg;
-    }
-
     s_txSendLen = avail;
-    HAL_UART_Transmit_DMA(&s_uartHandle, &s_txBuf[s_txReadIndex], avail);
+
+    if (HAL_UART_Transmit_DMA(&s_uartHandle, &s_txBuf[s_txRing.read], avail) != HAL_OK)
+    {
+        /* DMA 没起来：直接轮询发出去并推进读指针，绝不让缓冲卡死 */
+        usart1SendPolling(&s_txBuf[s_txRing.read], avail);
+        ringbuf_advance_read(&s_txRing, avail);
+        usart1TxKick();             /* 继续搬下一段（含回绕） */
+    }
 }
 
 /**
@@ -117,7 +150,7 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
         return;
     }
 
-    s_txReadIndex = (s_txReadIndex + s_txSendLen) & TX_DMA_MASK;
+    ringbuf_advance_read(&s_txRing, s_txSendLen);
     usart1TxKick();
 }
 
@@ -141,15 +174,14 @@ int fputc(int ch, FILE *f)
     os_enter_critical();
 
     /* 背压：缓冲满则等待 DMA 消费 */
-    while (((s_txWriteIndex + 1) & TX_DMA_MASK) == s_txReadIndex)
+    while (ringbuf_is_full(&s_txRing))
     {
         os_exit_critical();
         systickDelay_us(50);
         os_enter_critical();
     }
 
-    s_txBuf[s_txWriteIndex] = (uint8_t)ch;
-    s_txWriteIndex = (s_txWriteIndex + 1) & TX_DMA_MASK;
+    ringbuf_write_byte(&s_txRing, (uint8_t)ch);
 
     os_exit_critical();
 
@@ -169,7 +201,9 @@ static uint16_t usart1RxWriteIndex(void)
     uint16_t received = USART1_RX_DMA_BUF_SIZE -
                         (uint16_t)__HAL_DMA_GET_COUNTER(s_uartHandle.hdmarx);
 
-    return received & RX_DMA_MASK;
+    ringbuf_set_write(&s_rxRing, received);
+
+    return s_rxRing.write;
 }
 
 /**
@@ -177,7 +211,8 @@ static uint16_t usart1RxWriteIndex(void)
  */
 uint16_t usart1RxAvailable(void)
 {
-    return (usart1RxWriteIndex() - s_rxReadIndex) & RX_DMA_MASK;
+    usart1RxWriteIndex();       /* 刷新 DMA 写指针（NDTR） */
+    return ringbuf_available(&s_rxRing);
 }
 
 /**
@@ -192,10 +227,7 @@ uint8_t usart1ReadByte(uint8_t *pData)
         return 0;
     }
 
-    *pData = s_rxDmaBuf[s_rxReadIndex];
-    s_rxReadIndex = (s_rxReadIndex + 1) & RX_DMA_MASK;
-
-    return 1;
+    return ringbuf_read_byte(&s_rxRing, pData);
 }
 
 /**
@@ -207,34 +239,14 @@ uint8_t usart1ReadByte(uint8_t *pData)
  */
 uint16_t usart1ReadBytes(uint8_t *pBuf, uint16_t len)
 {
-    uint16_t avail;
-    uint16_t firstSeg;
-
     if (pBuf == NULL || len == 0)
     {
         return 0;
     }
 
-    avail = usart1RxAvailable();
-    if (len > avail)
-    {
-        len = avail;
-    }
+    usart1RxAvailable();        /* 刷新 DMA 写指针（NDTR）（不调用底层函数：减少接口暴露，屏蔽底层） */
 
-    firstSeg = USART1_RX_DMA_BUF_SIZE - s_rxReadIndex;      /* 到缓冲区末尾的连续段长度 */
-    if (len <= firstSeg)
-    {
-        memcpy(pBuf, &s_rxDmaBuf[s_rxReadIndex], len);
-    }
-    else
-    {
-        memcpy(pBuf, &s_rxDmaBuf[s_rxReadIndex], firstSeg);
-        memcpy(pBuf + firstSeg, s_rxDmaBuf, len - firstSeg);
-    }
-
-    s_rxReadIndex = (s_rxReadIndex + len) & RX_DMA_MASK;
-
-    return len;
+    return ringbuf_read(&s_rxRing, pBuf, len);
 }
 
 /**
@@ -242,14 +254,10 @@ uint16_t usart1ReadBytes(uint8_t *pBuf, uint16_t len)
  */
 void usart1FlushRx(void)
 {
-    s_rxReadIndex = usart1RxWriteIndex();
+    usart1RxWriteIndex();
+    ringbuf_discard_all(&s_rxRing);
 }
 
-/**
- * @brief   帧结束（总线空闲）回调（弱函数，应用层可重写）
- * @param   len : 当前缓冲内可读字节数（即本帧长度）
- * @note    在 USART 中断上下文中执行
- */
 /**
  * @brief   等待一帧到达（阻塞接口，替代任务轮询）
  * @param   timeoutMs : 超时毫秒数，0xFFFFFFFF 表示永久等待
@@ -366,9 +374,22 @@ void usart1Init(uint32_t baudRate)
     s_uartHandle.Init.Mode = UART_MODE_TX_RX;
     s_uartHandle.Init.HwFlowCtl = UART_HWCONTROL_NONE;
 
+    /* 初始化收发环形缓冲（大小必须为 2 的幂） */
+    ringbuf_init(&s_rxRing, s_rxDmaBuf, USART1_RX_DMA_BUF_SIZE);
+    ringbuf_init(&s_txRing, s_txBuf, USART1_TX_BUF_SIZE);
+
     if (HAL_UART_Init(&s_uartHandle) != HAL_OK)
     {
         while (1);
+    }
+
+    /* 上电横幅：用寄存器轮询直发，不依赖 DMA 与中断。
+     * 若串口助手连这一行都收不到，问题就在 CH340 / 跳线帽 / 驱动 / 线材一侧；
+     * 若只收到这一行、后面没输出，才是固件 DMA 发送链的问题（已有轮询兜底）。 */
+    {
+        static const char banner[] = "\r\n[USART1] 115200 8N1 ready\r\n";
+
+        usart1SendPolling((const uint8_t *)banner, (uint16_t)(sizeof(banner) - 1));
     }
 
 #if USART1_RX_ENABLE
@@ -405,22 +426,25 @@ void HAL_UART_MspInit(UART_HandleTypeDef *huart)
     USART1_RX_DMA_CLK_ENABLE();
     USART1_TX_DMA_CLK_ENABLE();
 
-    /* TX 引脚 */
-    gpioInitStruct.Pin = USART1_TX_GPIO_PIN;
-    gpioInitStruct.Pull = GPIO_PULLUP;
     gpioInitStruct.Mode = GPIO_MODE_AF_PP;
     gpioInitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+    gpioInitStruct.Alternate = USART1_GPIO_AF;      /* F4 引脚复用功能号（无 AFIO 寄存器） */
+
+    /* TX 引脚（AF7） */
+    gpioInitStruct.Pin = USART1_TX_GPIO_PIN;
+    gpioInitStruct.Pull = GPIO_PULLUP;
     HAL_GPIO_Init(USART1_TX_GPIO_PORT, &gpioInitStruct);
 
-    /* RX 引脚 */
+    /* RX 引脚（AF7）：F4 无 GPIO_MODE_AF_INPUT，统一按复用推挽配置，
+     * 上拉保证空闲态为高电平，避免悬空引入噪声/误帧 */
     gpioInitStruct.Pin = USART1_RX_GPIO_PIN;
-    gpioInitStruct.Pull = GPIO_NOPULL;
-    gpioInitStruct.Mode = GPIO_MODE_AF_INPUT;
+    gpioInitStruct.Pull = GPIO_PULLUP;
     HAL_GPIO_Init(USART1_RX_GPIO_PORT, &gpioInitStruct);
 
 #if USART1_RX_ENABLE
     /* RX DMA：外设 -> 内存，循环模式（环形缓冲核心） */
-    s_uartRxDma.Instance = USART1_RX_DMA_CHANNEL;
+    s_uartRxDma.Instance = USART1_RX_DMA_STREAM;
+    s_uartRxDma.Init.Channel = USART1_RX_DMA_CHANNEL;   /* F4：每个流需指定请求通道 */
     s_uartRxDma.Init.Direction = DMA_PERIPH_TO_MEMORY;
     s_uartRxDma.Init.PeriphInc = DMA_PINC_DISABLE;
     s_uartRxDma.Init.MemInc = DMA_MINC_ENABLE;
@@ -428,6 +452,10 @@ void HAL_UART_MspInit(UART_HandleTypeDef *huart)
     s_uartRxDma.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
     s_uartRxDma.Init.Mode = DMA_CIRCULAR;
     s_uartRxDma.Init.Priority = DMA_PRIORITY_HIGH;
+    s_uartRxDma.Init.FIFOMode = DMA_FIFOMODE_DISABLE;   /* 直通模式，单字节搬运 */
+    s_uartRxDma.Init.FIFOThreshold = DMA_FIFO_THRESHOLD_1QUARTERFULL;
+    s_uartRxDma.Init.MemBurst = DMA_MBURST_SINGLE;
+    s_uartRxDma.Init.PeriphBurst = DMA_PBURST_SINGLE;
     HAL_DMA_Init(&s_uartRxDma);
     __HAL_LINKDMA(huart, hdmarx, s_uartRxDma);
 
@@ -436,7 +464,8 @@ void HAL_UART_MspInit(UART_HandleTypeDef *huart)
 #endif
 
     /* TX DMA：内存 -> 外设，普通模式 */
-    s_uartTxDma.Instance = USART1_TX_DMA_CHANNEL;
+    s_uartTxDma.Instance = USART1_TX_DMA_STREAM;
+    s_uartTxDma.Init.Channel = USART1_TX_DMA_CHANNEL;   /* F4：每个流需指定请求通道 */
     s_uartTxDma.Init.Direction = DMA_MEMORY_TO_PERIPH;
     s_uartTxDma.Init.PeriphInc = DMA_PINC_DISABLE;
     s_uartTxDma.Init.MemInc = DMA_MINC_ENABLE;
@@ -444,6 +473,10 @@ void HAL_UART_MspInit(UART_HandleTypeDef *huart)
     s_uartTxDma.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
     s_uartTxDma.Init.Mode = DMA_NORMAL;
     s_uartTxDma.Init.Priority = DMA_PRIORITY_HIGH;
+    s_uartTxDma.Init.FIFOMode = DMA_FIFOMODE_DISABLE;   /* 直通模式，单字节搬运 */
+    s_uartTxDma.Init.FIFOThreshold = DMA_FIFO_THRESHOLD_1QUARTERFULL;
+    s_uartTxDma.Init.MemBurst = DMA_MBURST_SINGLE;
+    s_uartTxDma.Init.PeriphBurst = DMA_PBURST_SINGLE;
     HAL_DMA_Init(&s_uartTxDma);
     __HAL_LINKDMA(huart, hdmatx, s_uartTxDma);
 
@@ -474,15 +507,14 @@ void usart1SendAsync(uint8_t *pData, uint16_t len)
     {
         os_enter_critical();
 
-        while (((s_txWriteIndex + 1) & TX_DMA_MASK) == s_txReadIndex)
+        while (ringbuf_is_full(&s_txRing))
         {
             os_exit_critical();
             systickDelay_us(50);
             os_enter_critical();
         }
 
-        s_txBuf[s_txWriteIndex] = (uint8_t)pData[i];
-        s_txWriteIndex = (s_txWriteIndex + 1) & TX_DMA_MASK;
+        ringbuf_write_byte(&s_txRing, (uint8_t)pData[i]);
 
         os_exit_critical();
     }
@@ -496,7 +528,7 @@ void usart1SendAsync(uint8_t *pData, uint16_t len)
  */
 uint8_t usart1TxDone(void)
 {
-    if (((s_txWriteIndex - s_txReadIndex) & TX_DMA_MASK) != 0)
+    if (ringbuf_available(&s_txRing) != 0)
     {
         return 0;       /* 缓冲中仍有数据 */
     }

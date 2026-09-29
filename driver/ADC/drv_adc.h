@@ -7,7 +7,7 @@
 #define __DRV_ADC_H__
 
 #include "common_types.h"
-#include "stm32f1xx_hal.h"
+#include "stm32f4xx_hal.h"
 
 /* ADC 驱动初始化（配置温度/Vrefint 内部通道） */
 status_t drv_adc_init(void);

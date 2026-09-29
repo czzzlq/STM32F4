@@ -2,8 +2,7 @@
 #define FREERTOS_CONFIG_H
 
 /* 头文件 */
-// #include "../../core/sys/sys.h"
-#include "../../driver/usart/usart.h"
+#include <stdio.h>      /* configASSERT 的 printf 需要 */
 #include <stdint.h>
 
 extern uint32_t SystemCoreClock;

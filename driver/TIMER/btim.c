@@ -1,8 +1,9 @@
 /**
  * @file    btim.c
  * @brief   基本定时器定时中断驱动
- * @note    1. 定时器时钟：APB1 预分频 ≥2 时定时器时钟 = APB1 时钟 × 2，即 72MHz
- *          2. 溢出周期 Tout = ((arr+1) * (psc+1)) / 72MHz
+ * @note    1. 定时器时钟：APB1 预分频 ≥2 时定时器时钟 = APB1 时钟 × 2；
+ *             本项目 HCLK=168MHz、APB1=HCLK/4=42MHz，故 TIMxCLK = 84MHz
+ *          2. 溢出周期 Tout = ((arr+1) * (psc+1)) / 84MHz
  *          3. 中断服务函数直读寄存器（绕过 HAL 回调分发），更新事件经
  *             timer_callback_execute 分发给注册的回调
  */

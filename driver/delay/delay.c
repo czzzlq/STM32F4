@@ -32,7 +32,7 @@ void SysTick_Handler(void)
 
 /**
  * @brief   初始化 SysTick 定时模块
- * @param   systemclkMHz : 系统时钟频率（MHz），本项目为 72
+ * @param   systemclkMHz : 系统时钟频率（MHz），调用方按实际 HCLK 传入
  * @note    SysTick 时钟源为 HCLK/8；启用 OS 时按 configTICK_RATE_HZ 配置 1ms 心跳
  */
 void systickDelayInit(uint16_t systemclkMHz)

@@ -121,7 +121,7 @@ uint32_t os_get_tick_count(void)
 
 #else /* Bare metal implementation */
 
-#include "stm32f1xx_hal.h"
+#include "stm32f4xx_hal.h"
 
 static volatile uint32_t s_critical_nesting = 0;
 

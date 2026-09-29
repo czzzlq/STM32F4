@@ -9,34 +9,25 @@
 #include "os_wrapper.h"
 
 #if !(__ARMCC_VERSION >= 6010050)   /* AC5 编译器 */
-
-/* 内存池（64 字节对齐） */
-static __align(64) uint8_t mem1base[MEM1_MAX_SIZE];                                     /* 内部 SRAM 内存池 */
-static __align(64) uint8_t mem2base[MEM2_MAX_SIZE] __attribute__((at(SRAM_BASE_ADDR))); /* 外部 SRAM 内存池 */
-
-/* 内存状态表（4 字节对齐，按字加速扫描） */
-static __align(4) MT_TYPE mem1mapbase[MEM1_ALLOC_TABLE_SIZE];                                                      /* 内部 SRAM 状态表 */
-static __align(4) MT_TYPE mem2mapbase[MEM2_ALLOC_TABLE_SIZE] __attribute__((at(SRAM_BASE_ADDR + MEM2_MAX_SIZE)));  /* 外部 SRAM 状态表 */
-
-#else                               /* AC6 编译器（不支持 __attribute__((at))，用固定 section 名） */
-
-#if SRAM_BASE_ADDR != 0x68000000
-#error SRAM_BASE_ADDR changed! Please recalculate!
+#define MEM_ALIGN(n)        __align(n)
+#else                               /* AC6 编译器 */
+#define MEM_ALIGN(n)        __ALIGNED(n)
 #endif
 
-#if (SRAM_BASE_ADDR + MEM2_MAX_SIZE) != 0X68000020
-#error SRAM_BASE_ADDR + MEM2_MAX_SIZE changed! Please recalculate!
-#endif
+/* 内部 SRAM：静态内存池与状态表（位于片上 128KB） */
+static MEM_ALIGN(64) uint8_t mem1base[MEM1_MAX_SIZE];
+static MEM_ALIGN(4)  MT_TYPE mem1mapbase[MEM1_ALLOC_TABLE_SIZE];
 
-/* 内存池（64 字节对齐） */
-static __ALIGNED(64) uint8_t mem1base[MEM1_MAX_SIZE];                                                       /* 内部 SRAM 内存池 */
-static __ALIGNED(64) uint8_t mem2base[MEM2_MAX_SIZE] __attribute__((section(".bss.ARM.__at_0X68000000")));  /* 外部 SRAM 内存池 */
-
-/* 内存状态表（4 字节对齐，按字加速扫描） */
-static __ALIGNED(4) MT_TYPE mem1mapbase[MEM1_ALLOC_TABLE_SIZE];                                                          /* 内部 SRAM 状态表 */
-static __ALIGNED(4) MT_TYPE mem2mapbase[MEM2_ALLOC_TABLE_SIZE] __attribute__((section(".bss.ARM.__at_0X68000020")));     /* 外部 SRAM 状态表 */
-
-#endif
+/* 外部 SRAM：内存池与状态表用「指针」指向 FSMC 映射地址，而不是
+ * __attribute__((at())) / .ARM.__at_xxx 的绝对地址数组。原因：
+ *   C 库启动代码（__main → __scatterload）会在 main() 之前清零所有 ZI 段，
+ *   而 FSMC 的 NOR/PSRAM bank 复位后 MBKEN=0；RM0090 明确写着
+ *   “Accessing a disabled bank causes an ERROR on AHB bus”，
+ *   绝对地址 ZI 段会在上电瞬间触发 AHB error → HardFault（卡在启动阶段）。
+ *   改成指针后，启动阶段完全不访问外部 SRAM，真正的读写只发生在 sram_init()
+ *   与 my_mem_init(SRAMEX) 之后（bsp_init 中的调用顺序保证）。 */
+static uint8_t *const  mem2base    = (uint8_t *)SRAM_BASE_ADDR;                    /* 外部 SRAM 内存池 */
+static MT_TYPE *const  mem2mapbase = (MT_TYPE *)(SRAM_BASE_ADDR + MEM2_MAX_SIZE);  /* 外部 SRAM 状态表 */
 
 /* 内存池参数表 */
 const uint32_t memtblsize[SRAMBANK] = {MEM1_ALLOC_TABLE_SIZE, MEM2_ALLOC_TABLE_SIZE};

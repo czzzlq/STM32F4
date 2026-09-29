@@ -28,10 +28,12 @@ void sram_init(void)
     __HAL_RCC_GPIOF_CLK_ENABLE();
     __HAL_RCC_GPIOG_CLK_ENABLE();
 
-    /* 控制信号：CS/WR/RD（复用推挽） */
+    /* 控制信号/数据/地址总线：CS/WR/RD + FSMC_Dx/Ax
+     * （F4 必须指定 AF12=FSMC，否则引脚停在 AF0，总线信号出不去） */
     gpioInitStruct.Mode = GPIO_MODE_AF_PP;
     gpioInitStruct.Pull = GPIO_PULLUP;
     gpioInitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+    gpioInitStruct.Alternate = GPIO_AF12_FSMC;
 
     gpioInitStruct.Pin = SRAM_CS_GPIO_PIN;
     HAL_GPIO_Init(SRAM_CS_GPIO_PORT, &gpioInitStruct);
@@ -75,11 +77,29 @@ void sram_init(void)
     g_sram_handler.Init.AsynchronousWait = FSMC_ASYNCHRONOUS_WAIT_DISABLE;
     g_sram_handler.Init.WriteBurst = FSMC_WRITE_BURST_DISABLE;
 
-    /* 时序（HCLK=72MHz，1 周期 ≈ 13.9ns）：
-     * ADDSET=0（1 个 HCLK），DATAST=1（2 个 HCLK），模式 A */
-    fsmcTiming.AddressSetupTime = 0x00;
+    /* 时序（模式 A；FSMC 时基 = HCLK = 168MHz，1 HCLK ≈ 5.952ns，
+     *      本版 HAL 把寄存器值直接写入 BTR/BWTR，不做 -1 换算，即"值 = 周期数"）
+     *
+     * 器件：XM8A51216V33A（512K×16 = 1MB，异步 XRAM，15ns 档）
+     *       数据手册 002-00008 Rev.A1 P13 Switching Characteristics:
+     *         tRC ≥ 15ns（读周期）、tAA ≤ 15ns（地址→数据有效）、tACE ≤ 12ns（片选→数据有效）
+     *         tDOE ≤ 3.4ns（OE→数据有效）
+     *         tWC ≥ 15ns（写周期）、tSCE ≥ 7ns、tAW ≥ 8.4ns、tPWE ≥ 0.7ns（WE 脉宽）
+     *         tSA/tSD/tHD = 0ns（地址/数据建立保持无要求）
+     *         tPOWER = 1000us（上电到首次访问，由启动流程天然满足：首次真正的读写
+     *                 发生在 sram_init 之后，远大于 1ms）
+     *
+     * 取值 ADDSET=1、DATAST=3（读=写，ExtendedMode 关闭）：
+     *   读周期 = ADDSET+DATAST+2 = 6 HCLK = 35.7ns ≥ tRC 15ns（2.4 倍裕量）
+     *   地址有效→采样 = ADDSET+DATAST = 4 HCLK = 23.8ns ≥ tAA 15ns / tACE 12ns
+     *   NOE 低电平 = DATAST = 3 HCLK = 17.9ns ≥ tDOE 3.4ns
+     *   写周期 = ADDSET+DATAST = 4 HCLK = 23.8ns ≥ tWC 15ns / tSCE 7ns / tAW 8.4ns
+     *   NWE 低电平 = DATAST = 3 HCLK = 17.9ns ≥ tPWE 0.7ns
+     * 说明：原 F1 配置（0/1）在 168MHz 下只有 5.95ns 写周期，低于 tWC/tSCE/tAW，
+     *       属超频使用，故按手册重算 */
+    fsmcTiming.AddressSetupTime = 0x01;
     fsmcTiming.AddressHoldTime = 0x00;
-    fsmcTiming.DataSetupTime = 0x01;
+    fsmcTiming.DataSetupTime = 0x03;
     fsmcTiming.BusTurnAroundDuration = 0x00;
     fsmcTiming.AccessMode = FSMC_ACCESS_MODE_A;
 
