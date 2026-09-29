@@ -4,7 +4,7 @@
 #ifndef __SYSTEM_HAL_H__
 #define __SYSTEM_HAL_H__
 
-#include "stm32f1xx.h"
+#include "stm32f4xx.h"
 
 #define SYSTEM_INLINE   inline
 #define SYS_SUPPORT_OS  0

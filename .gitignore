@@ -1,2 +1,24 @@
+# 构建产物
 EIDE/build/
+
+# 编辑器/工具本地配置
 .vscode/
+.claude/
+EIDE/.clangd
+
+# Keil 器件支持包（体积大，由 EIDE/Keil 自行下载安装）
+EIDE/.pack/
+
+# 官方参考资料（芯片/液晶/板卡手册、封装库，体积大且为厂商版权资料）
+STM32F407/
+
+# 编译中间产物
+*.o
+*.d
+*.axf
+*.crf
+*.dep
+*.lnp
+*.htm
+*.map
+*.lst

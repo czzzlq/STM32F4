@@ -4,7 +4,7 @@
 #ifndef __BSP_SRAM_H__
 #define __BSP_SRAM_H__
 
-#include "stm32f1xx.h"
+#include "stm32f4xx.h"
 
 #define SRAM_BASE_ADDR      0x68000000U
 
