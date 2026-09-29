@@ -16,11 +16,14 @@
   *             - driver/usart
   *             - driver/LCD
   *             - driver/SRAM
+  *             - driver/ADC
+  *             - driver/IWDG
   *             - core/system
-  *             - core/STM32F1xx_HAL_Driver/Inc
-  *             - core/CMSIS/Device/ST/STM32F1xx/Include
+  *             - core/STM32F4xx_HAL_Driver/Inc
+  *             - core/CMSIS/Device/ST/STM32F4xx/Include
   *             - core/CMSIS/Include
   *             - middleware/MALLOC
+  *             - utility
   *             - os/os_wrapper
   *             - os/FreeRTOS/include
   *             - os/FreeRTOS/portable/RVDS/ARM_CM3
@@ -39,8 +42,8 @@ extern "C" {
 #define PROJECT_VERSION_PATCH   0
 
 /*======================= HAL & CMSIS =======================*/
-#include "stm32f1xx_hal.h"
-#include "stm32f1xx.h"
+#include "stm32f4xx_hal.h"
+#include "stm32f4xx.h"
 
 /*======================= Common =======================*/
 #include "common_types.h"

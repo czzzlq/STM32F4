@@ -6,7 +6,7 @@
 #ifndef __BSP_LCD_H__
 #define __BSP_LCD_H__
 
-#include "stm32f1xx.h"
+#include "stm32f4xx.h"
 
 /* 控制信号引脚 */
 #define LCD_WR_GPIO_PORT                GPIOD
@@ -17,8 +17,10 @@
 #define LCD_RD_GPIO_PIN                 GPIO_PIN_4
 #define LCD_RD_GPIO_CLK_ENABLE()        do{ __HAL_RCC_GPIOD_CLK_ENABLE(); }while(0)
 
+/* 背光引脚：本板（M144Z-M4）TFTLCD 接口的 LCD_BL = PB15
+ * 注意：PB0 是触摸面板的 T_SCK（SPI 时钟），不是背光；F1 工程沿用会导致屏不亮 */
 #define LCD_BL_GPIO_PORT                GPIOB
-#define LCD_BL_GPIO_PIN                 GPIO_PIN_0
+#define LCD_BL_GPIO_PIN                 GPIO_PIN_15
 #define LCD_BL_GPIO_CLK_ENABLE()        do{ __HAL_RCC_GPIOB_CLK_ENABLE(); }while(0)
 
 /* 片选引脚（与 LCD_FSMC_NEX 配套） */
@@ -26,10 +28,11 @@
 #define LCD_CS_GPIO_PIN                 GPIO_PIN_12
 #define LCD_CS_GPIO_CLK_ENABLE()        do{ __HAL_RCC_GPIOG_CLK_ENABLE(); }while(0)
 
-/* 数据/命令选择引脚（RS，与 LCD_FSMC_AX 配套） */
-#define LCD_RS_GPIO_PORT                GPIOG
-#define LCD_RS_GPIO_PIN                 GPIO_PIN_0
-#define LCD_RS_GPIO_CLK_ENABLE()        do{ __HAL_RCC_GPIOG_CLK_ENABLE(); }while(0)
+/* 数据/命令选择引脚（RS，与 LCD_FSMC_AX 配套）：本板接 FSMC_A6 = PF12
+ * （F1 工程用的是 FSMC_A10/PG0；本板 A10 只连到 SRAM） */
+#define LCD_RS_GPIO_PORT                GPIOF
+#define LCD_RS_GPIO_PIN                 GPIO_PIN_12
+#define LCD_RS_GPIO_CLK_ENABLE()        do{ __HAL_RCC_GPIOF_CLK_ENABLE(); }while(0)
 
 /* FSMC 数据引脚（LCD 与 SRAM 共用 FSMC 总线） */
 #define LCD_FSMC_D_GPIO_PORT            GPIOD
@@ -44,8 +47,8 @@
 
 /* FSMC 片选：LCD 挂在 FSMC_NE4，取值范围 1~4 */
 #define LCD_FSMC_NEX                    4
-/* RS 接 FSMC_A10，取值范围 0~25 */
-#define LCD_FSMC_AX                     10
+/* RS 接 FSMC_A6，取值范围 0~25 */
+#define LCD_FSMC_AX                     6
 
 #define LCD_FSMC_BCRX          FSMC_Bank1->BTCR[(LCD_FSMC_NEX - 1) * 2]
 #define LCD_FSMC_BTRX          FSMC_Bank1->BTCR[(LCD_FSMC_NEX - 1) * 2 + 1]

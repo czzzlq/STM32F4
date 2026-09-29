@@ -23,9 +23,11 @@
  */
 status_t bsp_init(void)
 {
-    systemCoreInit();       /* 1. 系统时钟（72MHz） */
+    systemCoreInit();       /* 1. 系统时钟（168MHz） */
 
-    systickDelayInit(72);   /* 2. SysTick 延时（含 FreeRTOS 心跳） */
+    /* 2. SysTick 延时（含 FreeRTOS 心跳）：按实际 HCLK 计算，
+     *    避免写死 72MHz 导致延时/系统节拍在 F4 上偏慢 */
+    systickDelayInit((uint16_t)(HAL_RCC_GetHCLKFreq() / 1000000U));
 
 #if BSP_USE_USART
     usart1Init(115200);     /* 3. 串口1（须在 LCD 前，lcd_init 会 printf） */
@@ -43,7 +45,7 @@ status_t bsp_init(void)
 
 #if BSP_USE_TIMER
     timer_callback_init();              /* 6. 定时器回调管理器 */
-    btim_tim5_init(10000 - 1, 72 - 1);  /* 7. TIM5 定时中断（10ms 周期） */
+    btim_tim5_init(10000 - 1, 84 - 1);  /* 7. TIM5 定时中断（10ms @84MHz 定时器时钟） */
 #endif
 
 #if BSP_USE_LED

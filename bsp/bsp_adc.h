@@ -6,7 +6,7 @@
 #ifndef __BSP_ADC_H__
 #define __BSP_ADC_H__
 
-#include "stm32f1xx.h"
+#include "stm32f4xx.h"
 
 /* ADC 外设实例 */
 #define BSP_ADC_PERIPH                   ADC1

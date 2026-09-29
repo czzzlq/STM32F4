@@ -1,15 +1,3 @@
-/**
-  ******************************************************************************
-  * @file       system_hal.h
-  * @author     czzzlq
-  * @date       2025Äê12ÔÂ13ÈÕ
-  * @brief      systemÇı¶¯Í·ÎÄ¼ş
-  * @attention  ½ö¹©Ñ§Ï°Ê¹ÓÃ
-  * @note       ½öÊÊÓÃÓÚSTM32F103ZET6
-  * @version    
-  *             -V0.1
-  ******************************************************************************
-**/
 #ifndef __SYSTEM_HAL_H__
 #define __SYSTEM_HAL_H__
 
@@ -17,24 +5,27 @@
 extern "C"{
 #endif
 
-#include "stm32f1xx.h"
+#include "stm32f4xx.h"
 
-#define SYSTEM_INLINE   inline //¶¨ÒåÏµÍ³ÄÚÁªº¯ÊıÎªÇ¿ÖÆÄÚÁª
+#define SYSTEM_INLINE   inline //å®šä¹‰ç³»ç»Ÿå†…è”å‡½æ•°ä¸ºå¼ºåˆ¶å†…è”
 
 #define SYS_SUPPORT_OS          1
 
 /*
-    Ê±ÖÓÅäÖÃ½á¹¹Ìå
+    æ—¶é’Ÿé…ç½®ç»“æ„ä½“
 */
 typedef struct{
-    uint32_t system_freq;       /*ÏµÍ³Ê±ÖÓÆµÂÊ */
-    uint32_t hclk_freq;         /* AHBÊ±ÖÓÆµÂÊ */
-    uint32_t pclk1_freq;        /* APB1Ê±ÖÓÆµÂÊ */
-    uint32_t pclk2_freq;        /* APB2Ê±ÖÓÆµÂÊ */
-    uint8_t  pll_multipliter;   /* PLL±¶ÆµÏµÊı */
+    uint32_t system_freq;       /*ç³»ç»Ÿæ—¶é’Ÿé¢‘ç‡ */
+    uint32_t hclk_freq;         /* AHBæ—¶é’Ÿé¢‘ç‡ */
+    uint32_t pclk1_freq;        /* APB1æ—¶é’Ÿé¢‘ç‡ */
+    uint32_t pclk2_freq;        /* APB2æ—¶é’Ÿé¢‘ç‡ */
+    uint32_t pllMDemultiplier;  /* PLLé¢„åˆ†é¢‘ç³»æ•° */
+    uint32_t pllNMultiplier;    /* PLLå€é¢‘ç³»æ•°N */
+    uint32_t pllPDemultiplier;  /* PLLå€é¢‘ç³»æ•°P */
+    uint32_t pllQDemultiplier;  /* PLLå€é¢‘ç³»æ•°Q */
 }SystemClockConfig_t;           
 
-/* º¯ÊıÉùÃ÷ ----------------------------------------------------------------*/
+/* å‡½æ•°å£°æ˜ ----------------------------------------------------------------*/
 void systemCoreInit(void);
 void systemCoreClockDeinit(void);
 const SystemClockConfig_t* systemCoreGetClockConfig(void);
@@ -45,11 +36,11 @@ uint32_t systemCoreGetCPUID(void);
 void System_GetUID(uint32_t uid_buf[3]);
 
 SYSTEM_INLINE void systemCoreWaitForIRQ(void){
-    __WFI();    //µÈ´ıÖĞ¶Ï
+    __WFI();    //ç­‰å¾…ä¸­æ–­
 }
 
 SYSTEM_INLINE void systemCoreWaiteForEvent(void){
-    __WFE();    //µÈ´ıÊÂ¼ş
+    __WFE();    //ç­‰å¾…äº‹ä»¶
 }
 
 #ifdef __cplusplus

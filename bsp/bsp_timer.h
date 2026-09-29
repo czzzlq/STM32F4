@@ -6,7 +6,7 @@
 #ifndef __BSP_TIMER_H__
 #define __BSP_TIMER_H__
 
-#include "stm32f1xx.h"
+#include "stm32f4xx.h"
 
 /*======================= 基本定时器（btim.c） =======================*/
 #define BTIM_TIM3_INT                       TIM3
@@ -30,14 +30,13 @@
 #define GTIM_TIMX_INT_CLK_ENABLE()          do{ __HAL_RCC_TIM3_CLK_ENABLE(); }while(0)
 
 /*======================= 通用定时器：PWM 输出 =======================*/
-/* TIM3_CH2 经部分重映射输出到 PB5 */
+/* TIM3_CH2 输出到 PB5（STM32F4 无 AFIO 重映射寄存器，由引脚复用功能 AF2 直接提供） */
 #define GTIM_TIMX_PWM_CHY_GPIO_PORT         GPIOB
 #define GTIM_TIMX_PWM_CHY_GPIO_PIN          GPIO_PIN_5
 #define GTIM_TIMX_PWM_CHY_GPIO_CLK_ENABLE() do{ __HAL_RCC_GPIOB_CLK_ENABLE(); }while(0)
+#define GTIM_TIMX_PWM_CHY_GPIO_AF           GPIO_AF2_TIM3
 
-#define GTIM_TIMX_PWM_CHY_GPIO_REMAP()      do{ __HAL_RCC_AFIO_CLK_ENABLE(); \
-                                                __HAL_AFIO_REMAP_TIM3_PARTIAL(); \
-                                             }while(0)
+#define GTIM_TIMX_PWM_CHY_GPIO_REMAP()      do{ }while(0)   /* F4 无需重映射配置 */
 
 #define GTIM_TIMX_PWM                       TIM3
 #define GTIM_TIMX_PWM_CHY                   TIM_CHANNEL_2
@@ -49,10 +48,11 @@
  * 使用捕获功能时置 1 并禁用 btim 的 TIM5 */
 #define GTIM_TIMX_CAP_IRQ_ENABLE            0
 
-/* TIM5_CH1，默认 PA0（与 WKUP 复用） */
+/* TIM5_CH1，默认 PA0（与 WKUP 复用），复用功能 AF2 */
 #define GTIM_TIMX_CAP_CHY_GPIO_PORT         GPIOA
 #define GTIM_TIMX_CAP_CHY_GPIO_PIN          GPIO_PIN_0
 #define GTIM_TIMX_CAP_CHY_GPIO_CLK_ENABLE() do{ __HAL_RCC_GPIOA_CLK_ENABLE(); }while(0)
+#define GTIM_TIMX_CAP_CHY_GPIO_AF           GPIO_AF2_TIM5
 
 #define GTIM_TIMX_CAP                       TIM5
 #define GTIM_TIMX_CAP_IRQn                  TIM5_IRQn
@@ -62,10 +62,11 @@
 #define GTIM_TIMX_CAP_CHY_CLK_ENABLE()      do{ __HAL_RCC_TIM5_CLK_ENABLE(); }while(0)
 
 /*======================= 通用定时器：外部计数 =======================*/
-/* TIM2_CH1 外部时钟模式1，默认 PA0（与 WKUP 复用） */
+/* TIM2_CH1 外部时钟模式1，默认 PA0（与 WKUP 复用），复用功能 AF1 */
 #define GTIM_TIMX_CNT_CHY_GPIO_PORT         GPIOA
 #define GTIM_TIMX_CNT_CHY_GPIO_PIN          GPIO_PIN_0
 #define GTIM_TIMX_CNT_CHY_GPIO_CLK_ENABLE() do{ __HAL_RCC_GPIOA_CLK_ENABLE(); }while(0)
+#define GTIM_TIMX_CNT_CHY_GPIO_AF           GPIO_AF1_TIM2
 
 #define GTIM_TIMX_CNT                       TIM2
 #define GTIM_TIMX_CNT_IRQn                  TIM2_IRQn
@@ -74,14 +75,16 @@
 #define GTIM_TIMX_CNT_CHY_CLK_ENABLE()      do{ __HAL_RCC_TIM2_CLK_ENABLE(); }while(0)
 
 /*======================= 高级定时器：N 个脉冲 PWM（atim.c） =======================*/
-/* TIM8_CH1，默认 PC6 */
+/* TIM8_CH1 输出到 PC6（F4 无 EVCR/AFIO，PC6 由复用功能 AF3 直接提供） */
 #define ATIM_TIMX_NPWM_CHY_GPIO_PORT        GPIOC
 #define ATIM_TIMX_NPWM_CHY_GPIO_PIN         GPIO_PIN_6
 #define ATIM_TIMX_NPWM_CHY_GPIO_CLK_ENABLE()    do{ __HAL_RCC_GPIOC_CLK_ENABLE(); }while(0)
+#define ATIM_TIMX_NPWM_CHY_GPIO_AF          GPIO_AF3_TIM8
 
 #define ATIM_TIMX_NPWM                      TIM8
-#define ATIM_TIMX_NPWM_IRQn                 TIM8_UP_IRQn
-#define ATIM_TIMX_NPWM_IRQHandler           TIM8_UP_IRQHandler
+/* F4 上 TIM8 更新中断与 TIM13 共用同一个向量（F1 是独立的 TIM8_UP） */
+#define ATIM_TIMX_NPWM_IRQn                 TIM8_UP_TIM13_IRQn
+#define ATIM_TIMX_NPWM_IRQHandler           TIM8_UP_TIM13_IRQHandler
 #define ATIM_TIMX_NPWM_CHY                  TIM_CHANNEL_1
 #define ATIM_TIMX_NPWM_CHY_CCRX             TIM8->CCR1
 #define ATIM_TIMX_NPWM_CHY_CLK_ENABLE()     do{ __HAL_RCC_TIM8_CLK_ENABLE(); }while(0)
@@ -104,6 +107,9 @@
 #define ATIM_TIMX_COMP_CH4_GPIO_PIN         GPIO_PIN_9
 #define ATIM_TIMX_COMP_CH4_GPIO_CLK_ENABLE()    do{ __HAL_RCC_GPIOC_CLK_ENABLE(); }while(0)
 
+/* TIM8_CH1~CH4 = PC6~PC9，复用功能 AF3 */
+#define ATIM_TIMX_COMP_GPIO_AF              GPIO_AF3_TIM8
+
 #define ATIM_TIMX_COMP                      TIM8
 #define ATIM_TIMX_COMP_CH1_CCRX             ATIM_TIMX_COMP->CCR1
 #define ATIM_TIMX_COMP_CH2_CCRX             ATIM_TIMX_COMP->CCR2
@@ -112,7 +118,7 @@
 #define ATIM_TIMX_COMP_CLK_ENABLE()         do{ __HAL_RCC_TIM8_CLK_ENABLE(); }while(0)
 
 /*======================= 高级定时器：互补 PWM =======================*/
-/* TIM1_CH1/CH1N/BKIN 经完全重映射到 PE9/PE8/PE15 */
+/* TIM1_CH1/CH1N/BKIN 输出到 PE9/PE8/PE15（F4 由复用功能 AF1 直接提供，无 AFIO 重映射） */
 #define ATIM_TIMX_CPLM_CHY_GPIO_PORT        GPIOE
 #define ATIM_TIMX_CPLM_CHY_GPIO_PIN         GPIO_PIN_9
 #define ATIM_TIMX_CPLM_CHY_GPIO_CLK_ENABLE()    do{ __HAL_RCC_GPIOE_CLK_ENABLE(); }while(0)
@@ -125,9 +131,8 @@
 #define ATIM_TIMX_CPLM_BKIN_GPIO_PIN        GPIO_PIN_15
 #define ATIM_TIMX_CPLM_BKIN_GPIO_CLK_ENABLE()   do{ __HAL_RCC_GPIOE_CLK_ENABLE(); }while(0)
 
-#define ATIM_TIMX_CPLM_CHYN_GPIO_REMAP()    do{ __HAL_RCC_AFIO_CLK_ENABLE(); \
-                                                __HAL_AFIO_REMAP_TIM1_ENABLE(); \
-                                             }while(0)
+#define ATIM_TIMX_CPLM_GPIO_AF              GPIO_AF1_TIM1
+#define ATIM_TIMX_CPLM_CHYN_GPIO_REMAP()    do{ }while(0)   /* F4 无需重映射配置 */
 
 #define ATIM_TIMX_CPLM                      TIM1
 #define ATIM_TIMX_CPLM_CHY                  TIM_CHANNEL_1
@@ -135,17 +140,16 @@
 #define ATIM_TIMX_CPLM_CLK_ENABLE()         do{ __HAL_RCC_TIM1_CLK_ENABLE(); }while(0)
 
 /*======================= 高级定时器：PWM 输入模式 =======================*/
-/* TIM8_CH1 经 EVCR 重映射到 PC6 */
+/* TIM8_CH1 输入，PC6（F4 由复用功能 AF3 直接提供，无 EVCR 寄存器） */
 #define ATIM_TIMX_PWMIN_CHY_GPIO_PORT       GPIOC
 #define ATIM_TIMX_PWMIN_CHY_GPIO_PIN        GPIO_PIN_6
 #define ATIM_TIMX_PWMIN_CHY_GPIO_CLK_ENABLE()   do{ __HAL_RCC_GPIOC_CLK_ENABLE(); }while(0)
-
-/* EVCR 寄存器值：TIM8_CH1 重映射到 PC6（PORT=PC, PIN=PX6） */
-#define ATIM_TIMX_PWMIN_EVCR_VALUE          ((uint32_t)(AFIO_EVCR_PORT_PC | AFIO_EVCR_PIN_PX6))
+#define ATIM_TIMX_PWMIN_CHY_GPIO_AF         GPIO_AF3_TIM8
 
 #define ATIM_TIMX_PWMIN                     TIM8
-#define ATIM_TIMX_PWMIN_IRQn                TIM8_UP_IRQn
-#define ATIM_TIMX_PWMIN_IRQHandler          TIM8_UP_IRQHandler
+/* TIM8 更新中断在 F4 上与 TIM13 共用向量，捕获比较中断独立 */
+#define ATIM_TIMX_PWMIN_IRQn                TIM8_UP_TIM13_IRQn
+#define ATIM_TIMX_PWMIN_IRQHandler          TIM8_UP_TIM13_IRQHandler
 #define ATIM_TIMX_PWMIN_CHY                 TIM_CHANNEL_1
 #define ATIM_TIMX_PWMIN_CHY_CLK_ENABLE()    do{ __HAL_RCC_TIM8_CLK_ENABLE(); }while(0)
 

@@ -6,7 +6,7 @@
 #ifndef __BSP_SRAM_H__
 #define __BSP_SRAM_H__
 
-#include "stm32f1xx.h"
+#include "stm32f4xx.h"
 
 /* 控制信号引脚 */
 #define SRAM_WR_GPIO_PORT               GPIOD
