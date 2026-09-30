@@ -18,7 +18,7 @@
 
 /*======================= LED Configuration =======================*/
 /* 本板（M144Z-M4）LED0/LED1 分别接 PF9/PF10（低电平点亮）
- * 注意：F1 精英板映射（PB5/PE5）在本板是 SPI Flash MOSI / DCMI_D6 */
+ * 注意：F1 板卡上的 PB5/PE5 映射在本板是 SPI Flash MOSI / DCMI_D6 */
 //LED0
 #define BSP_LED0_PORT           GPIOF
 #define BSP_LED0_PIN            GPIO_PIN_9
@@ -32,7 +32,7 @@
 #define BSP_LED1_ACTIVE_LEVEL   0   //LED1为低电平点亮
 
 /*======================= KEY Configuration =======================*/
-//KEY0（本板按键，与 BOOT0 共用）
+/* KEY0（本板按键，接 PE4；若所用板卡的 PE4 另有用途，改这里即可） */
 #define BSP_KEY0_PORT           GPIOE
 #define BSP_KEY0_PIN            GPIO_PIN_4
 #define BSP_KEY0_CLK_ENABLE()   do{ __HAL_RCC_GPIOE_CLK_ENABLE(); }while(0)

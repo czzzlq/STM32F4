@@ -37,7 +37,8 @@ extern uint32_t SystemCoreClock;
 /* 内存分配相关定义 */
 #define configSUPPORT_STATIC_ALLOCATION                 0                       /* 1: 支持静态申请内存, 默认: 0 */
 #define configSUPPORT_DYNAMIC_ALLOCATION                1                       /* 1: 支持动态申请内存, 默认: 1 */
-#define configTOTAL_HEAP_SIZE                           ((size_t)(10 * 1024))   /* FreeRTOS堆中可用的RAM总量, 单位: Byte, 无默认需定义 */
+#define configTOTAL_HEAP_SIZE                           ((size_t)(16 * 1024))   /* FreeRTOS堆中可用的RAM总量, 单位: Byte, 无默认需定义 */
+                                                                                /* 由 10KB 提到 16KB：5 个任务，其中 LVGL 任务栈需 4KB */
 #define configAPPLICATION_ALLOCATED_HEAP                0                       /* 1: 用户手动分配FreeRTOS内存堆(ucHeap), 默认: 0 */
 #define configSTACK_ALLOCATION_FROM_SEPARATE_HEAP       0                       /* 1: 用户自行实现任务创建时使用的内存申请与释放函数, 默认: 0 */
 
@@ -105,8 +106,20 @@ extern uint32_t FreeRTOSRunTimeTicks;
 #define xPortPendSVHandler                              PendSV_Handler
 #define vPortSVCHandler                                 SVC_Handler
 
-/* 断言 */
-#define vAssertCalled(char, int) printf("Error: %s, %d\r\n", char, int)
+/* 断言
+ * 断言输出走 vAssertCalled()（实现在 os/os_wrapper/os_wrapper.c），而不是直接 printf：
+ *   1. printf 会把数据塞进 TX 环形缓冲并可能再次触发 DMA 完成中断。如果断言本身
+ *      就发生在中断里（例如在 ISR 中误用了 taskENTER_CRITICAL），就会形成
+ *      "断言 → 打印 → 中断 → 断言"的自激刷屏，把所有正常输出都冲掉（踩过这个坑）；
+ *   2. 只打印第一次以保留现场，后续重复触发只累加计数，日志仍然可读。
+ * 出错位置与次数可用 g_assertFile / g_assertLine / g_assertCount 在调试器里查看 */
+extern volatile const char *g_assertFile;       /* 首次断言的 __FILE__（NULL 表示未断言过） */
+extern volatile uint32_t g_assertLine;          /* 首次断言的 __LINE__ */
+extern volatile uint32_t g_assertCount;         /* 断言累计次数 */
+extern volatile const char *g_assertLastFile;   /* 最近一次断言的 __FILE__ */
+extern volatile uint32_t g_assertLastLine;      /* 最近一次断言的 __LINE__ */
+void vAssertCalled(const char *pcFile, uint32_t ulLine);
+
 #define configASSERT( x ) if( ( x ) == 0 ) vAssertCalled( __FILE__, __LINE__ )
 
 /* FreeRTOS MPU 特殊定义 */

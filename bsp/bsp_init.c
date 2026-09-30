@@ -18,11 +18,15 @@
 
 /**
  * @brief   板级硬件初始化（上电后最先调用）
- * @note    初始化顺序：系统时钟 -> 延时 -> 串口 -> LCD -> SRAM -> 定时器 -> LED -> 按键
- * @retval  STATUS_OK
+ * @note    初始化顺序：系统时钟 -> 延时 -> 串口 -> LCD -> SRAM -> 定时器 -> LED -> 按键 -> ADC。
+ *          串口必须排在 LCD 之前（lcd_init 会 printf）。
+ *          单个外设失败不阻断其余外设，但错误码会向上传递，由 main 决定是否继续
+ * @retval  STATUS_OK / 首个失败外设的错误码
  */
 status_t bsp_init(void)
 {
+    status_t result = STATUS_OK;
+
     systemCoreInit();       /* 1. 系统时钟（168MHz） */
 
     /* 2. SysTick 延时（含 FreeRTOS 心跳）：按实际 HCLK 计算，
@@ -30,7 +34,11 @@ status_t bsp_init(void)
     systickDelayInit((uint16_t)(HAL_RCC_GetHCLKFreq() / 1000000U));
 
 #if BSP_USE_USART
-    usart1Init(115200);     /* 3. 串口1（须在 LCD 前，lcd_init 会 printf） */
+    result = usart1Init(115200);    /* 3. 串口1 */
+    if (result != STATUS_OK)
+    {
+        return result;              /* 串口不可用后续 printf 都是空操作，提前退出更易定位 */
+    }
 #endif
 
 #if BSP_USE_LCD
@@ -53,11 +61,19 @@ status_t bsp_init(void)
 #endif
 
 #if BSP_USE_KEY
-    drv_key_init();         /* 9. 按键（注册 TIM5 扫描回调） */
+    result = drv_key_init();    /* 9. 按键（注册 TIM5 扫描回调） */
+    if (result != STATUS_OK)
+    {
+        return result;
+    }
 #endif
 
 #if BSP_USE_ADC
-    drv_adc_init();         /* 10. ADC（内部温度/Vrefint） */
+    result = drv_adc_init();    /* 10. ADC（内部温度/Vrefint） */
+    if (result != STATUS_OK)
+    {
+        return result;
+    }
 #endif
 
     return STATUS_OK;

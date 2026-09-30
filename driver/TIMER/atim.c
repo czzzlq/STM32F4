@@ -5,6 +5,7 @@
  *          2. TIM1/TIM8 的更新中断与捕获比较中断相互独立
  */
 #include "atim.h"
+#include "os_wrapper.h"
 
 /* 输出比较模式句柄 */
 static TIM_HandleTypeDef s_compPwmHandle;
@@ -282,25 +283,38 @@ void ATIM_TIMX_PWMIN_CC_IRQHandler(void)
 
 /**
  * @brief   重置 PWM 输入测量状态，重新开始测量
+ * @note    用 os_enter_critical / os_exit_critical 而不是裸的
+ *          __disable_irq()/__enable_irq()：后者保存/恢复的是 PRIMASK，
+ *          会无条件打开中断，若本函数被包在 FreeRTOS 的临界区
+ *          （BASEPRI 屏蔽）里调用，退出时就把整个临界区破坏了；
+ *          os 抽象层的临界区是可嵌套的
  */
 void atim_timx_pwmin_chy_restart(void)
 {
-    __disable_irq();    /* 关闭中断，保护测量变量 */
+    os_enter_critical();
 
     s_pwminSta = 0;
     s_pwminHighVal = 0;
     s_pwminCycleVal = 0;
 
-    __enable_irq();
+    os_exit_critical();
 }
 
 /**
  * @brief   定时器输入捕获中断回调（PWM 输入测量结果提取）
  * @param   htim : 定时器句柄指针
- * @note    由 HAL_TIM_IRQHandler 调用；+2 为误差补偿系数
+ * @note    由 HAL_TIM_IRQHandler 调用；+2 为误差补偿系数。
+ *          必须先判断 Instance：这是 HAL 的全局回调，其它定时器
+ *          （如 gtim.c 的 TIM5 捕获）也会走到这里，不筛实例就会用
+ *          PWM 输入的句柄去读别人的捕获寄存器，把测量值写坏
  */
 void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
 {
+    if (htim->Instance != ATIM_TIMX_PWMIN)
+    {
+        return;                         /* 不是 PWM 输入定时器，交给其它模块处理 */
+    }
+
     if (s_pwminSta == 0)                /* 未成功测量 */
     {
         if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1)

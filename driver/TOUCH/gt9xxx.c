@@ -1,40 +1,30 @@
 /**
- ****************************************************************************************************
- * @file        gt9xxx.c
- * @author      正点原子团队(ALIENTEK)
- * @version     V1.0
- * @date        2023-04-23
- * @brief       GT9XXX驱动代码
- * @license     Copyright (c) 2020-2032, 广州市星翼电子科技有限公司
- ****************************************************************************************************
- * @attention
- * 
- * 实验平台:正点原子 M144Z-M4最小系统板STM32F407版
- * 在线视频:www.yuanzige.com
- * 技术论坛:www.openedv.com
- * 公司网址:www.alientek.com
- * 购买地址:openedv.taobao.com
- * 
- ****************************************************************************************************
+ * @file    gt9xxx.c
+ * @brief   GT911/GT9147/GT1158/GT9271 电容触摸 IC 驱动
+ * @note    PID 寄存器回读 ASCII 型号字符串来识别具体芯片：911/9147/1158 支持
+ *          5 点触摸，9271 支持 10 点。所有寄存器访问都检查从机应答，
+ *          避免芯片缺失时把总线上的浮空电平当成有效坐标
  */
 
 #include "gt9xxx.h"
-#include "../../driver/delay/delay.h"
+#include "delay.h"
 #include "ctiic.h"
-#include "../TOUCH/touch.h"
-#include "../LCD/lcd.h"
+#include "touch.h"
+#include "lcd.h"
 #include <string.h>
 #include <stdio.h>      /* printf（触摸调试打印） */
 
 /* 注意: 除了GT9271支持10点触摸之外, 其他触摸芯片只支持 5点触摸 */
-uint8_t g_gt_tnum = 5;      /* 默认支持的触摸屏点数(5点触摸) */
+static uint8_t s_gtTouchNum = 5;    /* 支持的触摸点数（识别到 GT9271 时改为 10） */
 
 /**
  * @brief       向gt9xxx写入一次数据
  * @param       reg : 起始寄存器地址
- * @param       buf : 数据缓缓存区
- * @param       len : 写数据长度
+ *   @arg       buf : 数据缓存区
+ *   @arg       len : 写数据长度
  * @retval      0, 成功; 1, 失败;
+ * @note        地址阶段的应答同样要检查：命令或地址没被应答时继续发数据
+ *              只会把数据写到总线上被丢弃
  */
 uint8_t gt9xxx_wr_reg(uint16_t reg, uint8_t *buf, uint8_t len)
 {
@@ -43,52 +33,85 @@ uint8_t gt9xxx_wr_reg(uint16_t reg, uint8_t *buf, uint8_t len)
 
     ct_iic_start();
     ct_iic_send_byte(GT9XXX_CMD_WR);    /* 发送写命令 */
-    ct_iic_wait_ack();
+
+    if (ct_iic_wait_ack())              /* 失败时 wait_ack 已产生 STOP */
+    {
+        return 1;
+    }
+
     ct_iic_send_byte(reg >> 8);         /* 发送高8位地址 */
-    ct_iic_wait_ack();
-    ct_iic_send_byte(reg & 0XFF);       /* 发送低8位地址 */
-    ct_iic_wait_ack();
+    if (ct_iic_wait_ack())
+    {
+        return 1;
+    }
+
+    ct_iic_send_byte(reg & 0xFF);       /* 发送低8位地址 */
+    if (ct_iic_wait_ack())
+    {
+        return 1;
+    }
 
     for (i = 0; i < len; i++)
     {
         ct_iic_send_byte(buf[i]);       /* 发数据 */
         ret = ct_iic_wait_ack();
 
-        if (ret) break;
+        if (ret)
+        {
+            return ret;                 /* wait_ack 已释放总线，无需再发 STOP */
+        }
     }
 
-    ct_iic_stop();  /* 产生一个停止条件 */
-    return ret;
+    ct_iic_stop();                      /* 产生一个停止条件 */
+    return 0;
 }
 
 /**
  * @brief       从gt9xxx读出一次数据
  * @param       reg : 起始寄存器地址
- * @param       buf : 数据缓缓存区
- * @param       len : 读数据长度
- * @retval      无
+ *   @arg       buf : 数据缓存区
+ *   @arg       len : 读数据长度
+ * @retval      0, 成功; 1, 失败;
+ * @note        失败时 buf 内容不可信，调用方必须检查返回值后再使用
  */
-void gt9xxx_rd_reg(uint16_t reg, uint8_t *buf, uint8_t len)
+uint8_t gt9xxx_rd_reg(uint16_t reg, uint8_t *buf, uint8_t len)
 {
     uint8_t i;
 
     ct_iic_start();
     ct_iic_send_byte(GT9XXX_CMD_WR);    /* 发送写命令 */
-    ct_iic_wait_ack();
+    if (ct_iic_wait_ack())
+    {
+        return 1;
+    }
+
     ct_iic_send_byte(reg >> 8);         /* 发送高8位地址 */
-    ct_iic_wait_ack();
-    ct_iic_send_byte(reg & 0XFF);       /* 发送低8位地址 */
-    ct_iic_wait_ack();
+    if (ct_iic_wait_ack())
+    {
+        return 1;
+    }
+
+    ct_iic_send_byte(reg & 0xFF);       /* 发送低8位地址 */
+    if (ct_iic_wait_ack())
+    {
+        return 1;
+    }
+
     ct_iic_start();
     ct_iic_send_byte(GT9XXX_CMD_RD);    /* 发送读命令 */
-    ct_iic_wait_ack();
+    if (ct_iic_wait_ack())
+    {
+        return 1;
+    }
 
     for (i = 0; i < len; i++)
     {
-        buf[i] = ct_iic_read_byte(i == (len - 1) ? 0 : 1);  /* 读取数据 */
+        /* 最后一个字节回 NACK，通知从机停止发送 */
+        buf[i] = ct_iic_read_byte((i == (len - 1)) ? 0 : 1);
     }
 
     ct_iic_stop();  /* 产生一个停止条件 */
+    return 0;
 }
 
 /**
@@ -130,35 +153,41 @@ uint8_t gt9xxx_init(void)
     HAL_GPIO_Init(GT9XXX_INT_GPIO_PORT, &gpio_init_struct); /* 初始化INT引脚 */
 
     systickDelay_ms(100);
-    gt9xxx_rd_reg(GT9XXX_PID_REG, temp, 4); /* 读取触摸IC的ID */
-    temp[4] = 0;
-    
-    /* 判断一下是否是特定的触摸屏 */
-    if (strcmp((char *)temp, "911") && strcmp((char *)temp, "9147") && strcmp((char *)temp, "1158") && strcmp((char *)temp, "9271"))
+
+    if (gt9xxx_rd_reg(GT9XXX_PID_REG, temp, 4) != 0)    /* 读取触摸IC的ID */
     {
-        return 1;   /* 若不是触摸屏用到的GT911/9147/1158/9271，则初始化失败，需硬件查看触摸IC型号以及查看时序函数是否正确 */
+        return 1;   /* 无应答：触摸 IC 未焊接或总线异常 */
     }
-    
+
+    temp[4] = 0;
+
+    /* 判断一下是否是本驱动支持的触摸屏 */
+    if (strcmp((char *)temp, "911") && strcmp((char *)temp, "9147") &&
+        strcmp((char *)temp, "1158") && strcmp((char *)temp, "9271"))
+    {
+        return 1;   /* 非 GT911/9147/1158/9271，需硬件确认触摸 IC 型号与上电时序 */
+    }
+
     printf("CTP ID:%s\r\n", temp);          /* 打印ID */
-    
+
     if (strcmp((char *)temp, "9271") == 0)  /* ID==9271, 支持10点触摸 */
     {
-         g_gt_tnum = 10;    /* 支持10点触摸屏 */
+        s_gtTouchNum = 10;                  /* 支持10点触摸屏 */
     }
-    
-    temp[0] = 0X02;
+
+    temp[0] = 0x02;
     gt9xxx_wr_reg(GT9XXX_CTRL_REG, temp, 1);    /* 软复位GT9XXX */
-    
+
     systickDelay_ms(10);
-    
-    temp[0] = 0X00;
+
+    temp[0] = 0x00;
     gt9xxx_wr_reg(GT9XXX_CTRL_REG, temp, 1);    /* 结束复位, 进入读坐标状态 */
 
     return 0;
 }
 
 /* GT9XXX 10个触摸点(最多) 对应的寄存器表 */
-const uint16_t GT9XXX_TPX_TBL[10] =
+static const uint16_t s_gtTpxTbl[10] =
 {
     GT9XXX_TP1_REG, GT9XXX_TP2_REG, GT9XXX_TP3_REG, GT9XXX_TP4_REG, GT9XXX_TP5_REG,
     GT9XXX_TP6_REG, GT9XXX_TP7_REG, GT9XXX_TP8_REG, GT9XXX_TP9_REG, GT9XXX_TP10_REG,
@@ -166,48 +195,64 @@ const uint16_t GT9XXX_TPX_TBL[10] =
 
 /**
  * @brief       扫描触摸屏(采用查询方式)
- * @param       mode : 电容屏未用到次参数, 为了兼容电阻屏
+ * @param       mode : 电容屏未用到此参数, 为了兼容电阻屏
  * @retval      当前触屏状态
- *   @arg       0, 触屏无触摸; 
+ *   @arg       0, 触屏无触摸;
  *   @arg       1, 触屏有触摸;
+ * @note        空闲时每 10 次调用才真正读一次寄存器，降低 IIC 占用；
+ *              一旦读到有效触点则连续采样 10 次以提高命中率
  */
 uint8_t gt9xxx_scan(uint8_t mode)
 {
     uint8_t buf[4];
     uint8_t i = 0;
     uint8_t res = 0;
+    uint8_t sta = 0;                /* 触摸状态寄存器值（不能用入参 mode 承载） */
     uint16_t temp;
     uint16_t tempsta;
-    static uint8_t t = 0;   /* 控制查询间隔,从而降低CPU占用率 */
+    static uint8_t t = 0;           /* 控制查询间隔,从而降低CPU占用率 */
+
+    UNUSED(mode);                   /* 电容屏不需要屏幕坐标/物理坐标模式 */
+
     t++;
 
     if ((t % 10) == 0 || t < 10)    /* 空闲时,每进入10次CTP_Scan函数才检测1次,从而节省CPU使用率 */
     {
-        gt9xxx_rd_reg(GT9XXX_GSTID_REG, &mode, 1);  /* 读取触摸点的状态 */
+        if (gt9xxx_rd_reg(GT9XXX_GSTID_REG, &sta, 1) != 0)
+        {
+            /* 读失败（芯片未应答/总线异常）：强制按「无触摸」处理。若直接返回，
+             * TP_PRES_DOWN 会一直残留，表现为触摸屏卡在按下状态 */
+            tp_dev.sta &= ~TP_PRES_DOWN;
+            return 0;
+        }
 
-        if ((mode & 0X80) && ((mode & 0XF) <= g_gt_tnum))
+        if ((sta & 0x80) && ((sta & 0x0F) <= s_gtTouchNum))
         {
             i = 0;
             gt9xxx_wr_reg(GT9XXX_GSTID_REG, &i, 1); /* 清标志 */
         }
 
-        if ((mode & 0XF) && ((mode & 0XF) <= g_gt_tnum))
+        if ((sta & 0x0F) && ((sta & 0x0F) <= s_gtTouchNum))
         {
-            temp = 0XFFFF << (mode & 0XF);  /* 将点的个数转换为1的位数,匹配tp_dev.sta定义 */
+            temp = 0xFFFF << (sta & 0x0F);  /* 将点的个数转换为1的位数,匹配tp_dev.sta定义 */
             tempsta = tp_dev.sta;           /* 保存当前的tp_dev.sta值 */
-            tp_dev.sta = (~temp) | TP_PRES_DOWN | TP_CATH_PRES;
-            tp_dev.x[g_gt_tnum - 1] = tp_dev.x[0];  /* 保存触点0的数据,保存在最后一个上 */
-            tp_dev.y[g_gt_tnum - 1] = tp_dev.y[0];
+            tp_dev.sta = (uint16_t)(~temp) | TP_PRES_DOWN | TP_CATH_PRES;
+            tp_dev.x[s_gtTouchNum - 1] = tp_dev.x[0];   /* 保存触点0的数据,保存在最后一个上 */
+            tp_dev.y[s_gtTouchNum - 1] = tp_dev.y[0];
 
-            for (i = 0; i < g_gt_tnum; i++)
+            for (i = 0; i < s_gtTouchNum; i++)
             {
                 if (tp_dev.sta & (1 << i))  /* 触摸有效? */
                 {
-                    gt9xxx_rd_reg(GT9XXX_TPX_TBL[i], buf, 4);   /* 读取XY坐标值 */
-
-                    if (lcddev.id == 0X5510 || lcddev.id == 0X9806 || lcddev.id == 0X7796)     /* 4.3寸800*480 和 3.5寸480*320 MCU屏 */
+                    if (gt9xxx_rd_reg(s_gtTpxTbl[i], buf, 4) != 0)
                     {
-                        if (tp_dev.touchtype & 0X01)    /* 横屏 */
+                        tp_dev.sta = tempsta;   /* 读失败：保留上一帧状态 */
+                        return res;
+                    }
+
+                    if (lcddev.id == 0x5510 || lcddev.id == 0x9806 || lcddev.id == 0x7796) /* 4.3寸800*480 和 3.5寸480*320 MCU屏 */
+                    {
+                        if (tp_dev.touchtype & 0x01)    /* 横屏 */
                         {
                             tp_dev.x[i] = lcddev.width - (((uint16_t)buf[3] << 8) + buf[2]);
                             tp_dev.y[i] = ((uint16_t)buf[1] << 8) + buf[0];
@@ -220,7 +265,7 @@ uint8_t gt9xxx_scan(uint8_t mode)
                     }
                     else    /* 其他型号 */
                     {
-                        if (tp_dev.touchtype & 0X01)    /* 横屏 */
+                        if (tp_dev.touchtype & 0x01)    /* 横屏 */
                         {
                             tp_dev.x[i] = ((uint16_t)buf[1] << 8) + buf[0];
                             tp_dev.y[i] = ((uint16_t)buf[3] << 8) + buf[2];
@@ -231,16 +276,14 @@ uint8_t gt9xxx_scan(uint8_t mode)
                             tp_dev.y[i] = ((uint16_t)buf[1] << 8) + buf[0];
                         }
                     }
-
-                    //printf("x[%d]:%d,y[%d]:%d\r\n", i, tp_dev.x[i], i, tp_dev.y[i]);
                 }
             }
 
             res = 1;
 
-            if (tp_dev.x[0] > lcddev.width || tp_dev.y[0] > lcddev.height)  /* 非法数据(坐标超出了) */
+            if (tp_dev.x[0] >= lcddev.width || tp_dev.y[0] >= lcddev.height)    /* 非法数据(坐标超出了) */
             {
-                if ((mode & 0XF) > 1)   /* 有其他点有数据,则复第二个触点的数据到第一个触点. */
+                if ((sta & 0x0F) > 1)   /* 有其他点有数据,则复制第二个触点的数据到第一个触点. */
                 {
                     tp_dev.x[0] = tp_dev.x[1];
                     tp_dev.y[0] = tp_dev.y[1];
@@ -248,20 +291,20 @@ uint8_t gt9xxx_scan(uint8_t mode)
                 }
                 else        /* 非法数据,则忽略此次数据(还原原来的) */
                 {
-                    tp_dev.x[0] = tp_dev.x[g_gt_tnum - 1];
-                    tp_dev.y[0] = tp_dev.y[g_gt_tnum - 1];
-                    mode = 0X80;
+                    tp_dev.x[0] = tp_dev.x[s_gtTouchNum - 1];
+                    tp_dev.y[0] = tp_dev.y[s_gtTouchNum - 1];
+                    sta = 0x80;
                     tp_dev.sta = tempsta;   /* 恢复tp_dev.sta */
                 }
             }
-            else 
+            else
             {
                 t = 0;      /* 触发一次,则会最少连续监测10次,从而提高命中率 */
             }
         }
     }
 
-    if ((mode & 0X8F) == 0X80)  /* 无触摸点按下 */
+    if ((sta & 0x8F) == 0x80)   /* 无触摸点按下 */
     {
         if (tp_dev.sta & TP_PRES_DOWN)      /* 之前是被按下的 */
         {
@@ -269,13 +312,16 @@ uint8_t gt9xxx_scan(uint8_t mode)
         }
         else    /* 之前就没有被按下 */
         {
-            tp_dev.x[0] = 0xffff;
-            tp_dev.y[0] = 0xffff;
-            tp_dev.sta &= 0XE000;           /* 清除点有效标记 */
+            tp_dev.x[0] = 0xFFFF;
+            tp_dev.y[0] = 0xFFFF;
+            tp_dev.sta &= 0xE000;           /* 清除点有效标记 */
         }
     }
 
-    if (t > 240)t = 10; /* 重新从10开始计数 */
+    if (t > 240)
+    {
+        t = 10; /* 重新从10开始计数 */
+    }
 
     return res;
 }

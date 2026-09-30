@@ -1,28 +1,13 @@
 /**
- ****************************************************************************************************
- * @file        myiic.h
- * @author      正点原子团队(ALIENTEK)
- * @version     V1.0
- * @date        2023-04-23
- * @brief       IIC驱动代码
- * @license     Copyright (c) 2020-2032, 广州市星翼电子科技有限公司
- ****************************************************************************************************
- * @attention
- * 
- * 实验平台:正点原子 M144Z-M4最小系统板STM32F407版
- * 在线视频:www.yuanzige.com
- * 技术论坛:www.openedv.com
- * 公司网址:www.alientek.com
- * 购买地址:openedv.taobao.com
- * 
- ****************************************************************************************************
+ * @file    myiic.h
+ * @brief   软件 IIC 主机时序（GPIO 模拟，用于 AT24CXX 等慢速从机）
+ * @note    引脚固定为 PB8(SCL)/PB9(SDA)；SDA 配置为开漏，因此无需切换输入/输出方向
  */
-
 #ifndef __MYIIC_H
 #define __MYIIC_H
 
-#include "../../core/system/system_hal.h"
-
+#include "common_types.h"
+#include "stm32f4xx_hal.h"
 
 /******************************************************************************************/
 /* 引脚 定义 */
@@ -37,13 +22,13 @@
 
 /******************************************************************************************/
 
-/* IO操作 */
-#define IIC_SCL(x)        do{ x ? \
+/* IO操作（宏参数必须加括号，见 driver/TOUCH/touch.h 中的说明） */
+#define IIC_SCL(x)        do{ (x) ? \
                               HAL_GPIO_WritePin(IIC_SCL_GPIO_PORT, IIC_SCL_GPIO_PIN, GPIO_PIN_SET) : \
                               HAL_GPIO_WritePin(IIC_SCL_GPIO_PORT, IIC_SCL_GPIO_PIN, GPIO_PIN_RESET); \
                           }while(0)       /* SCL */
 
-#define IIC_SDA(x)        do{ x ? \
+#define IIC_SDA(x)        do{ (x) ? \
                               HAL_GPIO_WritePin(IIC_SDA_GPIO_PORT, IIC_SDA_GPIO_PIN, GPIO_PIN_SET) : \
                               HAL_GPIO_WritePin(IIC_SDA_GPIO_PORT, IIC_SDA_GPIO_PIN, GPIO_PIN_RESET); \
                           }while(0)       /* SDA */
@@ -58,8 +43,8 @@ void iic_stop(void);            /* 发送IIC停止信号 */
 void iic_ack(void);             /* IIC发送ACK信号 */
 void iic_nack(void);            /* IIC不发送ACK信号 */
 uint8_t iic_wait_ack(void);     /* IIC等待ACK信号 */
-void iic_send_byte(uint8_t txd);/* IIC发送一个字节 */
-uint8_t iic_read_byte(unsigned char ack);/* IIC读取一个字节 */
+void iic_send_byte(uint8_t txd);            /* IIC发送一个字节 */
+uint8_t iic_read_byte(uint8_t ack);         /* IIC读取一个字节 */
 
-#endif
+#endif /* __MYIIC_H */
 

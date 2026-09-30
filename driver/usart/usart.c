@@ -27,6 +27,7 @@ static ringbuf_t s_rxRing;              /* 接收环形缓冲 */
 static uint8_t s_txBuf[USART1_TX_BUF_SIZE];
 static ringbuf_t s_txRing;              /* 发送环形缓冲 */
 static uint16_t s_txSendLen = 0;        /* 当前 DMA 段长度 */
+static uint16_t s_txSendStart = 0;      /* 当前 DMA 段在缓冲中的起始下标（轮询兜底用） */
 
 #if OS_USE_FREERTOS
 static os_sem_handle_t s_rxFrameSem = NULL;     /* 帧到达信号量 */
@@ -101,47 +102,98 @@ static void usart1SendPolling(const uint8_t *pData, uint16_t len)
         USART1_CFG_PERIPH->DR = pData[i];
     }
 
-    /* 等最后一字节移位完成，保证复位/断电前数据已出 */
-    while (((USART1_CFG_PERIPH->SR & USART_SR_TC) == 0))
+    /* 等最后一字节移位完成，保证复位/断电前数据已出。
+     * 同样带超时上限：UART 时基异常时不能死等 */
     {
-        ;
+        uint32_t guard = 0x1000000U;
+
+        while (((USART1_CFG_PERIPH->SR & USART_SR_TC) == 0) && (--guard != 0))
+        {
+            ;
+        }
     }
 }
 
 /**
- * @brief   启动/续传 TX 环形缓冲的 DMA 搬运
- * @note    DMA 空闲且缓冲非空时，搬运读指针处的一段连续数据；
- *          DMA 启动失败则退回轮询发送，保证 printf 永远有输出
+ * @brief   尝试把 TX 环形缓冲的一段连续数据交给 DMA
+ * @retval  1  已启动一段
+ *          0  DMA 正忙或缓冲为空，无需启动（由完成中断续传）
+ *         -1  DMA 启动失败
+ * @note    只有本函数会写 s_txSendLen / s_txSendStart，因此**调用方必须先与
+ *          该函数的其它调用者互斥**：任务侧用 os_enter_critical()，完成中断
+ *          里则天然互斥（见 HAL_UART_TxCpltCallback 的说明）。
+ *          这里刻意不做加锁，因为本函数同时服务于任务与中断两条路径
  */
-static void usart1TxKick(void)
+static int32_t usart1TxStartDma(void)
 {
     uint16_t avail;
 
     if (s_uartHandle.gState != HAL_UART_STATE_READY)
     {
-        return;                     /* 搬运进行中，由完成中断续传 */
+        return 0;                   /* 搬运进行中，由完成中断续传 */
     }
 
     /* 环形回绕：每次最多搬运到缓冲末尾的连续段 */
     avail = ringbuf_read_contig(&s_txRing);
     if (avail == 0)
     {
-        return;
+        return 0;
     }
 
+    s_txSendStart = s_txRing.read;
     s_txSendLen = avail;
 
-    if (HAL_UART_Transmit_DMA(&s_uartHandle, &s_txBuf[s_txRing.read], avail) != HAL_OK)
+    return (HAL_UART_Transmit_DMA(&s_uartHandle, &s_txBuf[s_txSendStart], avail) == HAL_OK) ? 1 : -1;
+}
+
+/**
+ * @brief   启动/续传 TX 环形缓冲的 DMA 搬运（任务上下文）
+ * @note    「判忙 + 取连续段 + 启动 DMA」必须是一个原子操作：
+ *          多个任务都会经 printf/SendAsync 走到这里，若在判忙与启动之间被抢占，
+ *          后来者会看到 READY 并先启动一段，前者再启动时拿到 HAL_BUSY，
+ *          于是轮询兜底把同一批数据又发一遍、同时推进读指针，输出重复且缓冲错位。
+ *          因此用临界区保护，并把 TX DMA 中断优先级放在 FreeRTOS 管理范围内，
+ *          保证完成中断不会插进这段临界区。
+ *          **本函数只能在任务上下文调用**：中断里用 usart1TxStartDma()，
+ *          taskENTER_CRITICAL 会断言"当前不在异常处理中"（port.c 的 VECTACTIVE 检查）
+ */
+static void usart1TxKick(void)
+{
+    int32_t result;
+    uint16_t start;
+    uint16_t len;
+
+    os_enter_critical();
+    result = usart1TxStartDma();
+    start = s_txSendStart;
+    len = s_txSendLen;
+    os_exit_critical();
+
+    if (result < 0)
     {
-        /* DMA 没起来：直接轮询发出去并推进读指针，绝不让缓冲卡死 */
-        usart1SendPolling(&s_txBuf[s_txRing.read], avail);
-        ringbuf_advance_read(&s_txRing, avail);
+        /* 轮询发送会阻塞数十毫秒，绝不能放在临界区内（会拖垮系统节拍）。
+         * HAL 出错时已把 gState 复位，这里只负责把数据送出去并推进读指针 */
+        usart1SendPolling(&s_txBuf[start], len);
+
+        os_enter_critical();
+        ringbuf_advance_read(&s_txRing, len);
+        os_exit_critical();
+
         usart1TxKick();             /* 继续搬下一段（含回绕） */
     }
 }
 
 /**
  * @brief   发送完成中断回调：推进消费指针并续传下一段
+ * @note    这里**不能**调用 os_enter_critical()：它最终走到 vPortEnterCritical()，
+ *          其中有一条 configASSERT 断言当前不在异常处理中（port.c 检查 ICSR 的
+ *          VECTACTIVE），从中断调用必然触发断言；而 configASSERT 又用 printf 输出，
+ *          printf 会再次入队并触发 DMA 完成中断，形成"断言→打印→中断→断言"的刷屏。
+ *          这里也确实不需要加锁：
+ *            1. TX DMA 中断优先级 == configMAX_SYSCALL_INTERRUPT_PRIORITY，
+ *               任务侧的临界区(BASEPRI)已经把它挡住，所以它只可能在任务临界区
+ *               之外运行，永远看不到 s_txSendLen / s_txRing 的中间状态；
+ *            2. 中断不会被任务抢占，同级中断之间也不会互相抢占
  */
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
@@ -151,7 +203,10 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
     }
 
     ringbuf_advance_read(&s_txRing, s_txSendLen);
-    usart1TxKick();
+
+    /* 续传下一段；失败不在此处兜底——中断里不能轮询发送，留给下一次
+     * 任务侧的 usart1TxKick()（printf/SendAsync 每次都会调用）重试 */
+    (void)usart1TxStartDma();
 }
 
 /**
@@ -163,10 +218,17 @@ int fputc(int ch, FILE *f)
 {
     (void)f;
 
-    /* 初始化前打印：DMA 未就绪，退回寄存器直发（保留早期打印能力） */
+    /* 初始化前打印：DMA 未就绪，退回寄存器直发（保留早期打印能力）。
+     * TXE 等待带超时，避免 UART 无时钟时死等 */
     if (s_uartHandle.gState == HAL_UART_STATE_RESET)
     {
-        while ((USART1_CFG_PERIPH->SR & USART_SR_TXE) == 0);
+        uint32_t guard = 0x100000U;
+
+        while (((USART1_CFG_PERIPH->SR & USART_SR_TXE) == 0) && (--guard != 0))
+        {
+            ;
+        }
+
         USART1_CFG_PERIPH->DR = (uint8_t)ch;
         return ch;
     }
@@ -313,12 +375,12 @@ __WEAK void usart1RxIdleHook(uint16_t len)
 /* ==================== 中断服务函数 ==================== */
 #if USART1_RX_ENABLE
 /**
- * @brief   串口1中断服务函数
+ * @brief   串口1中断服务函数（中断号取自 BSP 宏，便于换串口）
  * @note    1. IDLE（帧结束）与 ORE（溢出）标志先手动清除：
  *             读 SR 后再读 DR 即清标志（DMA 模式下读 DR 不影响接收数据）
  *          2. 其余错误经 HAL 通用处理；HAL 因错误停掉 DMA 接收时自动重启
  */
-void USART1_IRQHandler(void)
+void USART1_CFG_IRQHandler(void)
 {
     uint32_t sr = USART1_CFG_PERIPH->SR;
 
@@ -362,9 +424,13 @@ void USART1_TX_DMA_IRQHandler(void)
 /**
  * @brief   串口1初始化
  * @param   baudRate : 波特率
- * @note    启动环形 DMA 接收并使能 IDLE 帧检测
+ * @retval  STATUS_OK / STATUS_ERR / STATUS_ERR_BUSY
+ * @note    启动环形 DMA 接收并使能 IDLE 帧检测。
+ *          IDLE 中断必须在 DMA 接收启动之后再使能：否则启动前若已有一个
+ *          IDLE/ORE 挂起，ISR 会先把 DMA 启起来，本函数随后再启动就拿到
+ *          HAL_BUSY（原实现直接 while(1) 死机）
  */
-void usart1Init(uint32_t baudRate)
+status_t usart1Init(uint32_t baudRate)
 {
     s_uartHandle.Instance = USART1_CFG_PERIPH;
     s_uartHandle.Init.BaudRate = baudRate;
@@ -380,7 +446,7 @@ void usart1Init(uint32_t baudRate)
 
     if (HAL_UART_Init(&s_uartHandle) != HAL_OK)
     {
-        while (1);
+        return STATUS_ERR;      /* 引脚/时钟配置异常，交由上层决定是否继续 */
     }
 
     /* 上电横幅：用寄存器轮询直发，不依赖 DMA 与中断。
@@ -397,14 +463,16 @@ void usart1Init(uint32_t baudRate)
     s_rxFrameSem = os_sem_create_binary();      /* 帧到达信号量 */
 #endif
 
-    /* 启动环形 DMA 接收 + IDLE 帧结束检测 */
-    __HAL_UART_ENABLE_IT(&s_uartHandle, UART_IT_IDLE);
-
+    /* 先启动环形 DMA 接收，再使能 IDLE 帧结束检测（顺序不可颠倒） */
     if (HAL_UART_Receive_DMA(&s_uartHandle, s_rxDmaBuf, USART1_RX_DMA_BUF_SIZE) != HAL_OK)
     {
-        while (1);
+        return STATUS_ERR_BUSY;     /* 不阻塞启动流程，接收功能降级为不可用 */
     }
+
+    __HAL_UART_ENABLE_IT(&s_uartHandle, UART_IT_IDLE);
 #endif
+
+    return STATUS_OK;
 }
 
 /**
@@ -459,7 +527,10 @@ void HAL_UART_MspInit(UART_HandleTypeDef *huart)
     HAL_DMA_Init(&s_uartRxDma);
     __HAL_LINKDMA(huart, hdmarx, s_uartRxDma);
 
-    HAL_NVIC_SetPriority(USART1_RX_DMA_IRQn, 3, 2);
+    /* 优先级 6/0：只做 DMA 状态维护，不调用任何 FreeRTOS API。
+     * 注意必须 >= configMAX_SYSCALL_INTERRUPT_PRIORITY(5)，否则会插进
+     * 任务的 os_enter_critical() 里，破坏临界区的原子性 */
+    HAL_NVIC_SetPriority(USART1_RX_DMA_IRQn, 6, 0);
     HAL_NVIC_EnableIRQ(USART1_RX_DMA_IRQn);
 #endif
 
@@ -480,43 +551,53 @@ void HAL_UART_MspInit(UART_HandleTypeDef *huart)
     HAL_DMA_Init(&s_uartTxDma);
     __HAL_LINKDMA(huart, hdmatx, s_uartTxDma);
 
-    HAL_NVIC_SetPriority(USART1_TX_DMA_IRQn, 3, 1);
+    /* 优先级 5/0：TxCplt 回调里要推进 TX 环形缓冲读指针并续传下一段，
+     * 必须与任务的 os_enter_critical() 互斥，故不能高于 5 */
+    HAL_NVIC_SetPriority(USART1_TX_DMA_IRQn, 5, 0);
     HAL_NVIC_EnableIRQ(USART1_TX_DMA_IRQn);
 
     /* USART 中断（含 IDLE/ORE 帧处理）
      * 优先级 5/0：位于 FreeRTOS 管理范围内（5~15），
-     * IDLE 回调中可安全调用 FromISR API（帧信号量） */
-    HAL_NVIC_EnableIRQ(USART1_CFG_IRQn);
+     * IDLE 回调中可安全调用 FromISR API（帧信号量）。
+     * 先设优先级再使能，避免以默认优先级短暂开中断 */
     HAL_NVIC_SetPriority(USART1_CFG_IRQn, 5, 0);
+    HAL_NVIC_EnableIRQ(USART1_CFG_IRQn);
 }
 
 /**
  * @brief   非阻塞发送：数据入 TX 环形缓冲后立即返回
  * @param   pData : 数据指针（入队即完成拷贝，返回后可复用缓冲）
  * @param   len   : 数据长度
- * @note    缓冲满时产生背压等待；DMA 搬运由完成中断自动续传
+ * @note    批量入队：ringbuf_write 一次写入一段连续空间（自动处理回绕），
+ *          整个 len 通常只需 1 次临界区；只在缓冲满时退出去等待 DMA 消费。
+ *          原实现每字节一次 os_enter_critical/exit，256 字节的 printf
+ *          就要进出临界区 256 次
  */
 void usart1SendAsync(uint8_t *pData, uint16_t len)
 {
+    uint16_t written = 0;
+
     if (pData == NULL || len == 0)
     {
         return;
     }
 
-    for (uint16_t i = 0; i < len; i++)
+    while (written < len)
     {
-        os_enter_critical();
+        uint16_t n;
 
-        while (ringbuf_is_full(&s_txRing))
+        os_enter_critical();
+        n = ringbuf_write(&s_txRing, &pData[written], (uint16_t)(len - written));
+        os_exit_critical();
+
+        if (n == 0)
         {
-            os_exit_critical();
-            systickDelay_us(50);
-            os_enter_critical();
+            usart1TxKick();             /* 缓冲满：先推动 DMA，腾出空间 */
+            systickDelay_us(50);        /* 背压等待（任务上下文） */
+            continue;
         }
 
-        ringbuf_write_byte(&s_txRing, (uint8_t)pData[i]);
-
-        os_exit_critical();
+        written = (uint16_t)(written + n);
     }
 
     usart1TxKick();

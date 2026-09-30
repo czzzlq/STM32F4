@@ -3,15 +3,19 @@
  * @brief   重写驱动后的烧录验证程序
  * @note    验证内容：
  *          1. 串口环形缓冲区 + DMA：PC 发送任意数据帧，板子原样回显
- *          2. 外部 SRAM：探测到芯片才跑自检（精英板等无外部 SRAM 的板子自动跳过），
+ *          2. 外部 SRAM：探测到芯片才跑自检（未焊外部 SRAM 的板卡自动跳过），
  *             覆盖 32 位/16 位/字节三种拷贝路径
  *          3. 内存池（malloc）：内部池自检；外部池仅在探测到 SRAM 时参与
  *          4. LCD：按实际分辨率自适应布局（支持 240x320 / 480x800 等任意面板）
  *          5. KEY：KEY0 短按翻转 LED0；KEY1 短按重跑自检；WKUP 长按重绘 LCD
  *          6. LED：LED1 500ms 闪烁
+ *          7. LVGL：屏上验证界面（见 lv_mainstart.c），触摸与控件事件联动
  */
 #include "freertos_demo.h"
-#include "drv_adc.h"
+#include "lvgl.h"
+#include "lv_port_disp_template.h"
+#include "lv_port_indev_template.h"
+#include "lv_mainstart.h"
 #include <string.h>
 
 /* 任务优先级与堆栈 */
@@ -24,10 +28,20 @@
 #define UART_TASK_PRIO      4
 #define UART_TASK_STK_SIZE  128
 
+/* LVGL 任务：优先级与按键任务同级（渲染很重，不宜再高）；
+ * 栈要给足——控件创建、字库解码与渲染的调用深度远大于其它任务，
+ * 1024 字（4KB）是 LVGL 官方示例的常用量级 */
+#define LVGL_TASK_PRIO      2
+#define LVGL_TASK_STK_SIZE  1024
+
+/* my_mem_perused 返回 0~1000（0.1% 精度），除以该系数得到整百分比 */
+#define PERUSED_TO_PERCENT  10
+
 static os_task_handle_t s_startTaskHandle;
 static os_task_handle_t s_keyTaskHandle;
 static os_task_handle_t s_ledTaskHandle;
 static os_task_handle_t s_uartTaskHandle;
+static os_task_handle_t s_lvglTaskHandle;
 
 /* ==================== 自检用静态缓冲 ==================== */
 /* 外部 SRAM 的整片 1MB 都由 malloc 外部池托管（池 960KB + 状态表 60KB），
@@ -68,7 +82,7 @@ static void sram_test_block_release(void)
 
 /**
  * @brief   探测外部 SRAM 是否存在
- * @retval  1 存在；0 不存在（如精英板未焊接 SRAM 芯片）
+ * @retval  1 存在；0 不存在（如未焊接 SRAM 芯片的板卡）
  * @note    探测方法：连续写入 8 个互不相同的值后再整体读回比对。
  *          无芯片时总线行为不可信（可能浮空返回固定电平，或返回
  *          最后一次写入的值），单字节写读探测会假阳性，多值连续
@@ -205,6 +219,24 @@ static void malloc_self_test(void)
     if (p1 == NULL || p2 == NULL || (hasSramEx && p3 == NULL))
     {
         printf("[MALLOC] self test: FAIL (alloc failed)\r\n");
+
+        /* 已成功的分配要归还：否则这次失败会永久占住池里的块，
+         * 后续重跑自检（KEY1）会因内碎片累积而越来越容易失败 */
+        if (p1 != NULL)
+        {
+            myfree(SRAMIN, p1);
+        }
+
+        if (p2 != NULL)
+        {
+            myfree(SRAMIN, p2);
+        }
+
+        if (p3 != NULL)
+        {
+            myfree(SRAMEX, p3);
+        }
+
         return;
     }
 
@@ -287,11 +319,11 @@ static void malloc_self_test(void)
 
     printf("[MALLOC] self test: %s (%d errors, used IN=%d%%",
            (errCount == 0) ? "PASS" : "FAIL", errCount,
-           my_mem_perused(SRAMIN) / 10);
+           my_mem_perused(SRAMIN) / PERUSED_TO_PERCENT);
 
     if (hasSramEx)
     {
-        printf(" EX=%d%%", my_mem_perused(SRAMEX) / 10);
+        printf(" EX=%d%%", my_mem_perused(SRAMEX) / PERUSED_TO_PERCENT);
     }
     printf(")\r\n");
 }
@@ -347,6 +379,69 @@ static void demo_lcd(void)
 }
 
 /* ==================== 任务函数 ==================== */
+
+/**
+ * @brief   覆盖 LVGL 界面层的弱钩子：把界面上的开关状态映射到 LED0
+ * @param   on : 界面开关当前状态
+ * @note    这是「界面层不碰驱动」约定的落地点：lv_mainstart.c 只声明钩子，
+ *          具体点灯动作在本层实现，跨层依赖被限制在 app 内部
+ */
+void lv_ui_led_switch_hook(bool on)
+{
+    if (on)
+    {
+        drv_led_on(DRV_LED_ID_0);
+    }
+    else
+    {
+        drv_led_off(DRV_LED_ID_0);
+    }
+}
+
+/**
+ * @brief   LVGL 任务：初始化图形库与移植层，之后周期驱动 LVGL 定时器
+ * @note    1. 调用顺序不能颠倒：lv_init() 建内核 -> lv_port_disp_init() 注册显示
+ *              -> lv_port_indev_init() 注册触摸 -> lv_mainstart() 才能建控件
+ *          2. lv_port_disp_init() 会从外部 SRAM 池申请整屏绘图缓冲
+ *              (800x480x2 = 750KB)。本任务因此必须排在上电自检之后创建：
+ *              自检里的 512KB 大块分配在 start_task 返回前已经归还
+ *          3. 只有本任务访问 LVGL，所以不需要额外的互斥；将来若要从其它任务
+ *              改界面，必须用 lv_async_call 把动作投递到本任务
+ *          4. lv_timer_handler() 的返回值是「距离下次该被调用还有多少 ms」，
+ *              按它休眠而不是固定轮询，可以把 CPU 让给其它任务
+ */
+static void lvgl_task(void *pvParameters)
+{
+    UNUSED(pvParameters);
+
+    lv_init();
+    lv_port_disp_init();        /* 内部按需 lcd_init + 设横屏，并分配绘图缓冲 */
+    lv_port_indev_init();       /* 内部调用 tp_init() 识别触摸 IC */
+
+    printf("[LVGL] %dx%d disp+indev ready\r\n",
+           (int)lv_disp_get_hor_res(NULL), (int)lv_disp_get_ver_res(NULL));
+
+    lv_mainstart();             /* 构建验证界面 */
+    printf("[LVGL] UI ready\r\n");
+
+    while (1)
+    {
+        uint32_t delayMs = lv_timer_handler();
+
+        /* 夹到 1~20ms：太小会空转，太大会拖慢触摸与动画的响应 */
+        if (delayMs > 20U)
+        {
+            delayMs = 20U;
+        }
+        else if (delayMs < 1U)
+        {
+            delayMs = 1U;
+        }
+
+        os_delay_ms(delayMs);
+    }
+}
+
 /**
  * @brief   按键任务：KEY0 翻转 LED0；KEY1 重跑自检；WKUP 长按重绘 LCD
  */
@@ -427,9 +522,15 @@ static void uart_task(void *pvParameters)
 
 /**
  * @brief   开始任务：上电自检后创建各任务并删除自身
+ * @note    删除自身必须放在临界区之外：os_exit_critical() 恢复 BASEPRI 后
+ *          PendSV 可能立即切换，空闲任务随即回收本任务的 TCB 与栈，
+ *          而函数返回还要用这段栈（原实现把 delete 放在临界区里，
+ *          临界区结束后的返回路径就跑在已释放的栈上）
  */
 static void start_task(void *pvParameters)
 {
+    bool created = true;
+
     UNUSED(pvParameters);
 
     printf("\r\n===== Driver Verification =====\r\n");
@@ -439,17 +540,43 @@ static void start_task(void *pvParameters)
     adc_self_test();
     demo_lcd();
 
+    /* 临界区内创建，保证三个任务一起就绪（避免高优先级任务先跑起来时
+     * 低优先级任务还没被创建而出现奇怪的时序） */
     os_enter_critical();
 
-    os_task_create(key_task, "key_task", KEY_TASK_STK_SIZE * sizeof(StackType_t),
-                   NULL, KEY_TASK_PRIO, &s_keyTaskHandle);
-    os_task_create(led_task, "led_task", LED_TASK_STK_SIZE * sizeof(StackType_t),
-                   NULL, LED_TASK_PRIO, &s_ledTaskHandle);
-    os_task_create(uart_task, "uart_task", UART_TASK_STK_SIZE * sizeof(StackType_t),
-                   NULL, UART_TASK_PRIO, &s_uartTaskHandle);
+    if (!os_task_create(key_task, "key_task", KEY_TASK_STK_SIZE * sizeof(StackType_t),
+                        NULL, KEY_TASK_PRIO, &s_keyTaskHandle))
+    {
+        created = false;
+    }
+
+    if (!os_task_create(led_task, "led_task", LED_TASK_STK_SIZE * sizeof(StackType_t),
+                        NULL, LED_TASK_PRIO, &s_ledTaskHandle))
+    {
+        created = false;
+    }
+
+    if (!os_task_create(uart_task, "uart_task", UART_TASK_STK_SIZE * sizeof(StackType_t),
+                        NULL, UART_TASK_PRIO, &s_uartTaskHandle))
+    {
+        created = false;
+    }
+
+    /* LVGL 任务最后创建：此时自检占用的大块外部 SRAM 已归还 */
+    if (!os_task_create(lvgl_task, "lvgl_task", LVGL_TASK_STK_SIZE * sizeof(StackType_t),
+                        NULL, LVGL_TASK_PRIO, &s_lvglTaskHandle))
+    {
+        created = false;
+    }
+
+    os_exit_critical();
+
+    if (!created)
+    {
+        printf("[OS] task create failed (heap exhausted?)\r\n");
+    }
 
     os_task_delete(s_startTaskHandle);
-    os_exit_critical();
 }
 
 /**

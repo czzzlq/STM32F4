@@ -42,6 +42,13 @@
 #define SRAM_FSMC_G_GPIO_PINS           (GPIO_PIN_0  | GPIO_PIN_1  | GPIO_PIN_2  | GPIO_PIN_3  | \
                                          GPIO_PIN_4  | GPIO_PIN_5)
 
+/* 总线各端口时钟使能（驱动层用这些宏，不直接写 __HAL_RCC_GPIOx_CLK_ENABLE） */
+#define SRAM_FSMC_D_GPIO_CLK_ENABLE()   do{ __HAL_RCC_GPIOD_CLK_ENABLE(); }while(0)
+#define SRAM_FSMC_E_GPIO_CLK_ENABLE()   do{ __HAL_RCC_GPIOE_CLK_ENABLE(); }while(0)
+#define SRAM_FSMC_F_GPIO_CLK_ENABLE()   do{ __HAL_RCC_GPIOF_CLK_ENABLE(); }while(0)
+#define SRAM_FSMC_G_GPIO_CLK_ENABLE()   do{ __HAL_RCC_GPIOG_CLK_ENABLE(); }while(0)
+#define SRAM_FSMC_CLK_ENABLE()          do{ __HAL_RCC_FSMC_CLK_ENABLE(); }while(0)
+
 /* FSMC 片选：SRAM 挂在 FSMC_NE3，取值范围 1~4 */
 #define SRAM_FSMC_NEX                   3
 

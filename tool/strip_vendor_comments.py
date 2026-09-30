@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-一次性工具：剥离 lcd_ex.c / lcdfont.h 中的正点原子(ALIENTEK)注释，
+一次性工具（已执行完毕，保留备查）：剥离 lcd_ex.c / lcdfont.h 中的厂商注释，
 代码与寄存器数据逐字保留，只做机械变换，保证数据零误差。
-用法: python strip_alientek_comments.py
+
+用法: python strip_vendor_comments.py
 """
 import io
 import re

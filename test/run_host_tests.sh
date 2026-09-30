@@ -1,6 +1,7 @@
 #!/bin/bash
 # 纯逻辑模块的主机侧回归测试（PC 上运行，无需硬件）
-# 依赖：mingw gcc（或任意主机 gcc）
+# 依赖：mingw gcc（或任意主机 gcc）+ bash
+# Windows 上没有 bash 时改用等价脚本 test/run_host_tests.ps1
 set -e
 cd "$(dirname "$0")/.."
 
@@ -23,7 +24,7 @@ trap 'rm -rf "$BUILD_DIR"' EXIT
     -o "$BUILD_DIR/test_ringbuf"
 "$BUILD_DIR/test_ringbuf"
 
-# 3. 按键状态机（短按 / 消抖 / 长按 / 连发）
+# 3. 按键状态机（短按 / 消抖 / 长按 / 连发 / 多事件不丢失）
 "$GCC" $CFLAGS \
     -Itest/stubs -Icommon -Idriver/KEY -Idriver/TIMER -Ios/os_wrapper \
     driver/KEY/drv_key.c driver/TIMER/timer_callback.c \

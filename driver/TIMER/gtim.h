@@ -13,7 +13,6 @@ void gtim_timx_int_init(uint16_t arr, uint16_t psc);
 /* 通用定时器：PWM 输出 */
 void gtim_timx_pwm_chy_init(uint16_t arr, uint16_t psc);
 void gtim_timx_pwm_setcompare(uint32_t compare);
-uint32_t get_timx_capture(void);
 /* 通用定时器：输入捕获（高电平脉宽测量） */
 void gtim_timx_cap_chy_init(uint16_t arr, uint16_t psc);
 uint8_t gtim_timx_cap_chy_get_sta(void);

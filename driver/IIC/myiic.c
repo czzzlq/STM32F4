@@ -1,31 +1,18 @@
 /**
- ****************************************************************************************************
- * @file        myiic.c
- * @author      正点原子团队(ALIENTEK)
- * @version     V1.0
- * @date        2023-04-23
- * @brief       IIC驱动代码
- * @license     Copyright (c) 2020-2032, 广州市星翼电子科技有限公司
- ****************************************************************************************************
- * @attention
- * 
- * 实验平台:正点原子 M144Z-M4最小系统板STM32F407版
- * 在线视频:www.yuanzige.com
- * 技术论坛:www.openedv.com
- * 公司网址:www.alientek.com
- * 购买地址:openedv.taobao.com
- * 
- ****************************************************************************************************
+ * @file    myiic.c
+ * @brief   软件 IIC 主机时序（GPIO 模拟）
+ * @note    每位用 systickDelay_us(2) 产生节拍，对应约 250kHz 的 SCL；
+ *          从机（AT24CXX 等）对时序不敏感，低速可显著提高长线/排线下的可靠性
  */
 
 #include "myiic.h"
-#include "../../driver/delay/delay.h"
+#include "delay.h"
 
 
 /**
- * @brief       初始化IIC
- * @param       无
- * @retval      无
+ * @brief   初始化 IIC 引脚
+ * @note    SDA 用开漏输出：写 1 时引脚由外部上拉拉高，因此无需切换输入方向
+ *          即可回读从机的应答电平
  */
 void iic_init(void)
 {

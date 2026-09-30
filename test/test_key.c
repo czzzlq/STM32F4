@@ -27,7 +27,7 @@ static void key_reset(void)
     {
         drv_key_ctrl_block[i].press_time = 0;
         drv_key_ctrl_block[i].key_state = 0;
-        drv_key_ctrl_block[i].key_event = DRV_KEY_EVENT_NONE;
+        drv_key_ctrl_block[i].key_pending = 0;
         drv_key_ctrl_block[i].long_press_trigger = 0;
         drv_key_ctrl_block[i].repeat_time = 0;
         /* gpio_port / gpio_pin / active_level 由 drv_key.c 静态初始化，保持不变 */
@@ -132,6 +132,29 @@ static int test_repeat(void)
     return 0;
 }
 
+/* 事件不丢失：任务未及时取走时，多个事件应依次取出而不是被覆盖 */
+static int test_event_queue(void)
+{
+    key_reset();
+    drv_key_scan_isr();
+
+    KEY0_PRESS();
+    g_test_tick = 0;
+    drv_key_scan_isr();
+
+    g_test_tick = 3100;
+    drv_key_scan_isr();                              /* 长按触发（不消费） */
+
+    g_test_tick = 3600;
+    drv_key_scan_isr();                              /* 连发（不消费，两个事件同时挂起） */
+
+    if (drv_key_get_event(DRV_KEY_ID_0) != DRV_KEY_EVENT_LONG_PRESS_TRIGGER) return 1;
+    if (drv_key_get_event(DRV_KEY_ID_0) != DRV_KEY_EVENT_REPEAT) return 2;
+    if (drv_key_get_event(DRV_KEY_ID_0) != DRV_KEY_EVENT_NONE) return 3;
+
+    return 0;
+}
+
 int main(void)
 {
     int fail = 0;
@@ -140,6 +163,7 @@ int main(void)
     fail |= test_debounce();
     fail |= test_long_press();
     fail |= test_repeat();
+    fail |= test_event_queue();
 
     if (fail)
     {

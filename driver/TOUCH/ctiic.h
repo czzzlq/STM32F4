@@ -1,27 +1,14 @@
 /**
- ****************************************************************************************************
- * @file        ctiic.h
- * @author      正点原子团队(ALIENTEK)
- * @version     V1.0
- * @date        2023-04-23
- * @brief       电容触摸屏IIC驱动代码
- * @license     Copyright (c) 2020-2032, 广州市星翼电子科技有限公司
- ****************************************************************************************************
- * @attention
- * 
- * 实验平台:正点原子 M144Z-M4最小系统板STM32F407版
- * 在线视频:www.yuanzige.com
- * 技术论坛:www.openedv.com
- * 公司网址:www.alientek.com
- * 购买地址:openedv.taobao.com
- * 
- ****************************************************************************************************
+ * @file    ctiic.h
+ * @brief   电容触摸屏专用软件 IIC 主机时序（GPIO 模拟）
+ * @note    独立于 driver/IIC：触摸 IC 挂在 PB0(SCL) / PF11(SDA)，
+ *          与 EEPROM 的 PB8/PB9 总线物理隔离，故单独维护一套时序
  */
-
 #ifndef __CTIIC_H
 #define __CTIIC_H
 
-#include "../../core/system/system_hal.h"
+#include "common_types.h"
+#include "stm32f4xx_hal.h"
 
 /******************************************************************************************/
 /* CT_IIC 引脚 定义 */
@@ -32,17 +19,17 @@
 
 #define CT_IIC_SDA_GPIO_PORT            GPIOF
 #define CT_IIC_SDA_GPIO_PIN             GPIO_PIN_11
-#define CT_IIC_SDA_GPIO_CLK_ENABLE()    do{ __HAL_RCC_GPIOF_CLK_ENABLE(); }while(0)   /* PB口时钟使能 */
+#define CT_IIC_SDA_GPIO_CLK_ENABLE()    do{ __HAL_RCC_GPIOF_CLK_ENABLE(); }while(0)   /* PF口时钟使能 */
 
 /******************************************************************************************/
 
-/* IO操作 */
-#define CT_IIC_SCL(x)     do{ x ? \
+/* IO操作（宏参数必须加括号，见 touch.h 中的说明） */
+#define CT_IIC_SCL(x)     do{ (x) ? \
                               HAL_GPIO_WritePin(CT_IIC_SCL_GPIO_PORT, CT_IIC_SCL_GPIO_PIN, GPIO_PIN_SET) : \
                               HAL_GPIO_WritePin(CT_IIC_SCL_GPIO_PORT, CT_IIC_SCL_GPIO_PIN, GPIO_PIN_RESET); \
                           }while(0)       /* SCL */
 
-#define CT_IIC_SDA(x)     do{ x ? \
+#define CT_IIC_SDA(x)     do{ (x) ? \
                               HAL_GPIO_WritePin(CT_IIC_SDA_GPIO_PORT, CT_IIC_SDA_GPIO_PIN, GPIO_PIN_SET) : \
                               HAL_GPIO_WritePin(CT_IIC_SDA_GPIO_PORT, CT_IIC_SDA_GPIO_PIN, GPIO_PIN_RESET); \
                           }while(0)       /* SDA */
@@ -60,6 +47,6 @@ void ct_iic_nack(void);             /* IIC不发送ACK信号 */
 uint8_t ct_iic_wait_ack(void);      /* IIC等待ACK信号 */
 
 void ct_iic_send_byte(uint8_t txd);         /* IIC发送一个字节 */
-uint8_t ct_iic_read_byte(unsigned char ack);/* IIC读取一个字节 */
+uint8_t ct_iic_read_byte(uint8_t ack);      /* IIC读取一个字节 */
 
-#endif
+#endif /* __CTIIC_H */

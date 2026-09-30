@@ -34,14 +34,14 @@ const uint32_t memtblsize[SRAMBANK] = {MEM1_ALLOC_TABLE_SIZE, MEM2_ALLOC_TABLE_S
 const uint32_t memblksize[SRAMBANK] = {MEM1_BLOCK_SIZE, MEM2_BLOCK_SIZE};
 const uint32_t memsize[SRAMBANK] = {MEM1_MAX_SIZE, MEM2_MAX_SIZE};
 
-/* 内存管理结构体 */
+/* 内存管理结构体（数组成员用内层花括号显式分组，避免隐式聚合初始化歧义） */
 struct _m_mallco_dev mallco_dev =
 {
     my_mem_init,                    /* 内存池初始化 */
     my_mem_perused,                 /* 内存使用率 */
-    mem1base, mem2base,             /* 内存池基地址 */
-    mem1mapbase, mem2mapbase,       /* 内存状态表 */
-    0, 0,                           /* 就绪标志 */
+    {mem1base, mem2base},           /* 内存池基地址 */
+    {mem1mapbase, mem2mapbase},     /* 内存状态表 */
+    {0, 0},                         /* 就绪标志 */
 };
 
 #if MY_MALLOC_MAGIC_ENABLE
@@ -65,16 +65,18 @@ __WEAK void my_mem_corrupt_hook(uint8_t memx, void *ptr)
 /**
  * @brief   内存拷贝（32 位对齐加速）
  * @param   des : 目的地址
- * @param   src : 源地址
- * @param   n   : 字节数
- * @note    仅目的地址做 4 字节对齐（源允许非对齐，M3 支持普通内存非对齐访问）
+ *   @arg   src : 源地址
+ *   @arg   n   : 字节数
+ * @note    仅目的地址做 4 字节对齐（源允许非对齐，M3/M4 支持普通内存非对齐访问）。
+ *          对齐判断用 uintptr_t 而不是 uint32_t：指针转整型必须用与指针同宽的
+ *          类型，在 64 位主机测试上 uint32_t 会被截断
  */
 void my_mem_copy(void *des, void *src, uint32_t n)
 {
     uint8_t *dst8 = (uint8_t *)des;
     uint8_t *src8 = (uint8_t *)src;
 
-    while (n && ((uint32_t)dst8 & 3U))
+    while (n && ((uintptr_t)dst8 & 3U))
     {
         *dst8++ = *src8++;
         n--;
@@ -100,15 +102,15 @@ void my_mem_copy(void *des, void *src, uint32_t n)
 /**
  * @brief   内存设置（32 位写入加速）
  * @param   s     : 内存首地址
- * @param   c     : 要设置的值（低 8 位有效）
- * @param   count : 字节数
+ *   @arg   c     : 要设置的值（低 8 位有效）
+ *   @arg   count : 字节数
  */
 void my_mem_set(void *s, uint8_t c, uint32_t count)
 {
     uint8_t *dst8 = (uint8_t *)s;
     const uint32_t word = (uint32_t)c * 0x01010101UL;   /* 字节值扩展为 32 位 */
 
-    while (count && ((uint32_t)dst8 & 3U))
+    while (count && ((uintptr_t)dst8 & 3U))
     {
         *dst8++ = c;
         count--;
@@ -202,11 +204,6 @@ static uint32_t my_mem_malloc(uint8_t memx, uint32_t size)
     const uint32_t blkSize = memblksize[memx];
     int32_t i;
 
-    if (!mallco_dev.memrdy[memx])
-    {
-        mallco_dev.init(memx);      /* 首次使用前初始化（此时无并发访问） */
-    }
-
     if (size == 0)
     {
         return 0xFFFFFFFF;
@@ -221,6 +218,14 @@ static uint32_t my_mem_malloc(uint8_t memx, uint32_t size)
     map = mallco_dev.memmap[memx];
 
     os_enter_critical();    /* 扫描+标记期间禁止任务切换（多任务并发分配安全） */
+
+    /* 池未初始化时就地初始化。必须放在临界区内：若两个任务同时首次分配，
+     * 各自调用 mem_init 会把对方刚标记好的块清零（原实现把这一步放在
+     * 临界区之外，正是该竞态的窗口） */
+    if (!mallco_dev.memrdy[memx])
+    {
+        mallco_dev.init(memx);
+    }
 
     /* 尾部不足 4 块的零头逐块扫描 */
     i = (int32_t)tableSize - 1;
@@ -305,40 +310,89 @@ static uint32_t my_mem_malloc(uint8_t memx, uint32_t size)
 }
 
 /**
- * @brief   内存释放（内部函数）
+ * @brief   由块偏移反查该分配块占用的字节数
  * @param   memx   : 内存池编号
- * @param   offset : 内存偏移地址
- * @retval  0 释放成功；1 内存池未初始化；2 偏移超界
+ *   @arg   offset : 块起始偏移（含 magic 块头）
+ * @retval  块占用的字节数；0 表示偏移非法或该块未分配/表项损坏
+ * @note    状态表项直接参与地址运算，必须先做 index / nmemb 的边界校验：
+ *          表项被破坏时（例如越界写）无校验的 `map[index + i] = 0` 会写到
+ *          状态表之外，外部池的状态表后面就是未映射区，会触发 AHB error
  */
-static uint8_t my_mem_free(uint8_t memx, uint32_t offset)
+static uint32_t my_mem_block_capacity(uint8_t memx, uint32_t offset)
 {
-    if (!mallco_dev.memrdy[memx])
+    MT_TYPE *map = mallco_dev.memmap[memx];
+    uint32_t index;
+    uint32_t nmemb;
+
+    if (offset >= memsize[memx])
     {
-        mallco_dev.init(memx);
-        return 1;
-    }
-
-    if (offset < memsize[memx])
-    {
-        MT_TYPE *map = mallco_dev.memmap[memx];
-        uint32_t index;
-        uint32_t nmemb;
-
-        os_enter_critical();
-
-        index = offset / memblksize[memx];          /* 偏移对应的内存块号 */
-        nmemb = map[index];                         /* 该块记录的连续块数 */
-
-        for (uint32_t i = 0; i < nmemb; i++)
-        {
-            map[index + i] = 0;
-        }
-
-        os_exit_critical();
         return 0;
     }
 
-    return 2;   /* 偏移超界 */
+    index = offset / memblksize[memx];
+    if (index >= memtblsize[memx])
+    {
+        return 0;
+    }
+
+    nmemb = map[index];
+
+    if ((nmemb == 0) || ((index + nmemb) > memtblsize[memx]))
+    {
+        return 0;       /* 未分配，或 nmemb 已被破坏 */
+    }
+
+    return nmemb * memblksize[memx];
+}
+
+/**
+ * @brief   内存释放（内部函数）
+ * @param   memx   : 内存池编号
+ *   @arg   offset : 内存偏移地址
+ * @retval  0 释放成功；1 内存池未初始化；2 偏移超界或表项损坏（已计数）
+ */
+static uint8_t my_mem_free(uint8_t memx, uint32_t offset)
+{
+    MT_TYPE *map = mallco_dev.memmap[memx];
+    uint32_t index;
+    uint32_t nmemb;
+
+    if (!mallco_dev.memrdy[memx])
+    {
+        /* 池未初始化：表项必然全 0，没有需要清理的块。
+         * 原实现在这里反过来调用 mem_init，会把并发分配中的块整个清掉 */
+        return 1;
+    }
+
+    if (offset >= memsize[memx])
+    {
+        return 2;   /* 偏移超界 */
+    }
+
+    index = offset / memblksize[memx];
+
+    os_enter_critical();
+
+    nmemb = map[index];                         /* 该块记录的连续块数 */
+
+    if ((nmemb == 0) || ((index + nmemb) > memtblsize[memx]))
+    {
+        os_exit_critical();
+
+#if MY_MALLOC_MAGIC_ENABLE
+        g_mallocCorruptCount++;                 /* 表项异常：计入越界破坏统计 */
+        my_mem_corrupt_hook(memx, (void *)((uintptr_t)mallco_dev.membase[memx] + offset));
+#endif
+        return 2;
+    }
+
+    for (uint32_t i = 0; i < nmemb; i++)
+    {
+        map[index + i] = 0;
+    }
+
+    os_exit_critical();
+    return 0;
 }
 
 /**
@@ -402,22 +456,76 @@ void *mymalloc(uint8_t memx, uint32_t size)
 }
 
 /**
+ * @brief   由用户指针反查该分配块的可用字节数
+ * @param   memx : 内存池编号
+ *   @arg   ptr  : 用户指针（mymalloc 的返回值）
+ * @retval  用户可安全读写的字节数；0 表示指针非法或块已损坏
+ * @note    开启 magic 时用户指针 = 块起始 + 4，需要减掉块头
+ */
+static uint32_t my_mem_user_capacity(uint8_t memx, void *ptr)
+{
+    uint32_t offset = (uint32_t)((uintptr_t)ptr - (uintptr_t)mallco_dev.membase[memx]);
+    uint32_t headroom = 0;
+    uint32_t blockCap;
+
+#if MY_MALLOC_MAGIC_ENABLE
+    if (offset < 4)
+    {
+        return 0;
+    }
+    offset -= 4;
+    headroom = 4;
+#endif
+
+    blockCap = my_mem_block_capacity(memx, offset);
+
+    return (blockCap > headroom) ? (blockCap - headroom) : 0;
+}
+
+/**
  * @brief   重新分配内存（外部接口：分配新块 -> 拷贝 -> 释放旧块）
  * @param   memx : 内存池编号
- * @param   ptr  : 旧内存首地址
- * @param   size : 新分配字节数
- * @retval  新内存首地址；NULL 表示分配失败
+ *   @arg   ptr  : 旧内存首地址（可为 NULL，等价于 mymalloc）
+ *   @arg   size : 新分配字节数（为 0 时释放旧块并返回 NULL）
+ * @retval  新内存首地址；NULL 表示分配失败（此时旧块仍然有效）或 size 为 0
+ * @note    只能拷贝旧块与新块中较小的那部分。原实现无条件拷贝 size 字节，
+ *          扩容时必然读越旧块末尾（堆上其它块的数据被泄露到新块），
+ *          缩容时又拷贝了新块装不下的数据；ptr == NULL 时还会直接空指针解引用
  */
 void *myrealloc(uint8_t memx, void *ptr, uint32_t size)
 {
-    void *newPtr = mymalloc(memx, size);
+    void *newPtr;
+    uint32_t copyLen;
 
-    if (newPtr == NULL)
+    if (ptr == NULL)
     {
+        return mymalloc(memx, size);    /* 与标准 realloc 语义一致 */
+    }
+
+    if (size == 0)
+    {
+        myfree(memx, ptr);
         return NULL;
     }
 
-    my_mem_copy(newPtr, ptr, size);
+    copyLen = my_mem_user_capacity(memx, ptr);
+    if (copyLen == 0)
+    {
+        return NULL;                    /* 旧块非法或已损坏，拒绝搬迁 */
+    }
+
+    if (copyLen > size)
+    {
+        copyLen = size;                 /* 缩容：只搬新块放得下的部分 */
+    }
+
+    newPtr = mymalloc(memx, size);
+    if (newPtr == NULL)
+    {
+        return NULL;                    /* 分配失败，旧块保持有效 */
+    }
+
+    my_mem_copy(newPtr, ptr, copyLen);
     myfree(memx, ptr);
 
     return newPtr;

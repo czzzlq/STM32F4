@@ -35,7 +35,9 @@ typedef struct
     uint16_t    gpio_pin;               /* GPIO 引脚 */
     uint32_t    press_time;             /* 按下时刻（tick，用于长按判断） */
     uint8_t     key_state;              /* 当前状态：0 释放，1 按下 */
-    uint8_t     key_event;              /* 待处理事件（drv_key_event_t） */
+    uint8_t     key_pending;            /* 待处理事件位图：bit N 对应 drv_key_event_t N
+                                         * （用位图而非单槽，避免两次事件间隔内
+                                         *  后一个事件把前一个覆盖掉而丢失） */
     uint8_t     active_level;           /* 有效电平 */
     uint8_t     long_press_trigger;     /* 长按已触发标志 */
     uint32_t    repeat_time;            /* 上次连发时刻（tick） */
@@ -45,7 +47,9 @@ typedef struct
 status_t drv_key_init(void);
 /* 按键扫描（在定时器中断中调用） */
 void drv_key_scan_isr(void);
-/* 获取按键事件（读后清空，线程安全） */
+/* 获取按键事件（每次取出一个待处理事件，无事件返回 DRV_KEY_EVENT_NONE，线程安全） */
 drv_key_event_t drv_key_get_event(drv_key_id_t id);
+/* 查询按键当前是否被按下（电平状态，线程安全） */
+bool drv_key_is_pressed(drv_key_id_t id);
 
 #endif /* __DRV_KEY_H__ */

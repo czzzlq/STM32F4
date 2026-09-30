@@ -1,27 +1,14 @@
 /**
- ****************************************************************************************************
- * @file        touch.h
- * @author      正点原子团队(ALIENTEK)
- * @version     V1.0
- * @date        2023-04-23
- * @brief       电容触摸屏驱动代码
- * @license     Copyright (c) 2020-2032, 广州市星翼电子科技有限公司
- ****************************************************************************************************
- * @attention
- * 
- * 实验平台:正点原子 M144Z-M4最小系统板STM32F407版
- * 在线视频:www.yuanzige.com
- * 技术论坛:www.openedv.com
- * 公司网址:www.alientek.com
- * 购买地址:openedv.taobao.com
- * 
- ****************************************************************************************************
+ * @file    touch.h
+ * @brief   触摸屏驱动接口（兼容电阻屏 XPT2046/ADS7846 与电容屏 GT9xxx/FT5206）
+ * @note    引脚定义见本文件；电容屏的 IIC 时序见 ctiic.h。
+ *          电阻屏需要五点校准，校准参数存放在 AT24CXX 中（见 24cxx.h）
  */
-
 #ifndef __TOUCH_H
 #define __TOUCH_H
 
-#include "../../core/system/system_hal.h"
+#include "common_types.h"
+#include "stm32f4xx_hal.h"
 
 /******************************************************************************************/
 /* 电阻触摸屏驱动IC T_PEN/T_CS/T_MISO/T_MOSI/T_SCK 引脚 定义 */
@@ -52,25 +39,28 @@
 #define T_PEN           HAL_GPIO_ReadPin(T_PEN_GPIO_PORT, T_PEN_GPIO_PIN)             /* T_PEN */
 #define T_MISO          HAL_GPIO_ReadPin(T_MISO_GPIO_PORT, T_MISO_GPIO_PIN)           /* T_MISO */
 
-#define T_MOSI(x)     do{ x ? \
+/* 注意：宏参数必须加括号。这些宏展开成 "x ? A : B"，若调用处传入
+ * 含 ?: 的表达式（如 T_MOSI(a ? 1 : 0)），会因 ?: 右结合而改变含义 */
+
+#define T_MOSI(x)     do{ (x) ? \
                           HAL_GPIO_WritePin(T_MOSI_GPIO_PORT, T_MOSI_GPIO_PIN, GPIO_PIN_SET) : \
                           HAL_GPIO_WritePin(T_MOSI_GPIO_PORT, T_MOSI_GPIO_PIN, GPIO_PIN_RESET); \
                       }while(0)     /* T_MOSI */
 
-#define T_CLK(x)      do{ x ? \
+#define T_CLK(x)      do{ (x) ? \
                           HAL_GPIO_WritePin(T_CLK_GPIO_PORT, T_CLK_GPIO_PIN, GPIO_PIN_SET) : \
                           HAL_GPIO_WritePin(T_CLK_GPIO_PORT, T_CLK_GPIO_PIN, GPIO_PIN_RESET); \
                       }while(0)     /* T_CLK */
 
-#define T_CS(x)       do{ x ? \
+#define T_CS(x)       do{ (x) ? \
                           HAL_GPIO_WritePin(T_CS_GPIO_PORT, T_CS_GPIO_PIN, GPIO_PIN_SET) : \
                           HAL_GPIO_WritePin(T_CS_GPIO_PORT, T_CS_GPIO_PIN, GPIO_PIN_RESET); \
                       }while(0)     /* T_CS */
 
 
-#define TP_PRES_DOWN    0x8000  /* 触屏被按下 */
-#define TP_CATH_PRES    0x4000  /* 有按键按下了 */
-#define CT_MAX_TOUCH    10      /* 电容屏支持的点数,固定为5点 */
+#define TP_PRES_DOWN    0x8000  /* 笔按下标记 */
+#define TP_CATH_PRES    0x4000  /* 捕获到一次按下（用于校准取点） */
+#define CT_MAX_TOUCH    10      /* 电容屏最多支持的点数（x[]/y[] 数组长度） */
 
 /* 触摸屏控制器 */
 typedef struct
@@ -79,9 +69,8 @@ typedef struct
     uint8_t (*scan)(uint8_t);   /* 扫描触摸屏.0,屏幕扫描;1,物理坐标; */
     void (*adjust)(void);       /* 触摸屏校准 */
     uint16_t x[CT_MAX_TOUCH];   /* 当前坐标 */
-    uint16_t y[CT_MAX_TOUCH];   /* 电容屏有最多10组坐标,电阻屏则用x[0],y[0]代表:此次扫描时,触屏的坐标,用
-                                 * x[9],y[9]存储第一次按下时的坐标.
-                                 */
+    uint16_t y[CT_MAX_TOUCH];   /* 电容屏有最多10组坐标;电阻屏用 x[0]/y[0] 表示本次扫描坐标,
+                                 * 用 x[CT_MAX_TOUCH-1]/y[CT_MAX_TOUCH-1] 保存本次按下时的首个坐标 */
 
     uint16_t sta;               /* 笔的状态
                                  * b15:按下1/松开0;
@@ -104,26 +93,16 @@ typedef struct
      *    1, 电容屏
      */
     uint8_t touchtype;
-} _m_tp_dev;
+} tp_dev_t;
 
-extern _m_tp_dev tp_dev;        /* 触屏控制器在touch.c里面定义 */
+extern tp_dev_t tp_dev;         /* 触屏控制器在touch.c里面定义 */
 
 
-/* 电阻屏函数 */
-
-static void tp_write_byte(uint8_t data);                /* 向控制芯片写入一个数据 */
-static uint16_t tp_read_ad(uint8_t cmd);                /* 读取AD转换值 */
-static uint16_t tp_read_xoy(uint8_t cmd);               /* 带滤波的坐标读取(X/Y) */
-static void tp_read_xy(uint16_t *x, uint16_t *y);       /* 双方向读取(X+Y) */
-static uint8_t tp_read_xy2(uint16_t *x, uint16_t *y);   /* 带加强滤波的双方向坐标读取 */
-static void tp_draw_touch_point(uint16_t x, uint16_t y, uint16_t color);    /* 画一个坐标校准点 */
-static void tp_adjust_info_show(uint16_t xy[5][2], double px, double py);   /* 显示校准信息 */
-
-uint8_t tp_init(void);                 /* 初始化 */
-static uint8_t tp_scan(uint8_t mode);  /* 扫描 */
-void tp_adjust(void);                  /* 触摸屏校准 */
-void tp_save_adjust_data(void);        /* 保存校准参数 */
-uint8_t tp_get_adjust_data(void);      /* 读取校准参数 */
+/* 对外接口 */
+uint8_t tp_init(void);                  /* 初始化（自动识别触摸 IC），1 表示做过校准 */
+void tp_adjust(void);                   /* 触摸屏五点校准 */
+void tp_save_adjust_data(void);         /* 保存校准参数到 EEPROM */
+uint8_t tp_get_adjust_data(void);       /* 从 EEPROM 读取校准参数，1 表示有效 */
 void tp_draw_big_point(uint16_t x, uint16_t y, uint16_t color); /* 画一个大点 */
 
-#endif
+#endif /* __TOUCH_H */

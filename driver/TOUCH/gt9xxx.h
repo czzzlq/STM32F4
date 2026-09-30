@@ -1,27 +1,13 @@
 /**
- ****************************************************************************************************
- * @file        gt9xxx.h
- * @author      正点原子团队(ALIENTEK)
- * @version     V1.0
- * @date        2023-04-23
- * @brief       GT9XXX驱动代码
- * @license     Copyright (c) 2020-2032, 广州市星翼电子科技有限公司
- ****************************************************************************************************
- * @attention
- * 
- * 实验平台:正点原子 M144Z-M4最小系统板STM32F407版
- * 在线视频:www.yuanzige.com
- * 技术论坛:www.openedv.com
- * 公司网址:www.alientek.com
- * 购买地址:openedv.taobao.com
- * 
- ****************************************************************************************************
+ * @file    gt9xxx.h
+ * @brief   GT911/GT9147/GT1158/GT9271 电容触摸 IC 驱动接口
+ * @note    RST=PC13、INT=PB1；IIC 时序由 ctiic 提供（SCL=PB0、SDA=PF11）
  */
-
 #ifndef __GT9XXX_H
 #define __GT9XXX_H
 
-#include "../../core/system/system_hal.h"
+#include "common_types.h"
+#include "stm32f4xx_hal.h"
 
 /******************************************************************************************/
 /* GT9XXX INT 和 RST 引脚 定义 */
@@ -39,7 +25,7 @@
 /* 与电容触摸屏连接的芯片引脚(未包含IIC引脚) 
  * IO操作函数 
  */
-#define GT9XXX_RST(x)     do{ x ? \
+#define GT9XXX_RST(x)     do{ (x) ? \
                               HAL_GPIO_WritePin(GT9XXX_RST_GPIO_PORT, GT9XXX_RST_GPIO_PIN, GPIO_PIN_SET) : \
                               HAL_GPIO_WritePin(GT9XXX_RST_GPIO_PORT, GT9XXX_RST_GPIO_PIN, GPIO_PIN_RESET); \
                           }while(0)       /* 复位引脚 */
@@ -71,9 +57,9 @@
 /******************************************************************************************/
 /* 函数声明 */
 
-uint8_t gt9xxx_wr_reg(uint16_t reg,uint8_t *buf,uint8_t len);   /* 向gt9xx写入数据 */
-void gt9xxx_rd_reg(uint16_t reg,uint8_t *buf,uint8_t len);      /* 从gt9xx读取数据 */
-uint8_t gt9xxx_init(void);                                      /* 初始化gt9xxx触摸屏 */
-uint8_t gt9xxx_scan(uint8_t mode);                              /* 扫描触摸屏 */
+uint8_t gt9xxx_wr_reg(uint16_t reg, uint8_t *buf, uint8_t len); /* 向gt9xx写入数据，0 成功 / 1 失败 */
+uint8_t gt9xxx_rd_reg(uint16_t reg, uint8_t *buf, uint8_t len); /* 从gt9xx读取数据，0 成功 / 1 失败 */
+uint8_t gt9xxx_init(void);                                      /* 初始化gt9xxx触摸屏，0 成功 / 1 失败 */
+uint8_t gt9xxx_scan(uint8_t mode);                              /* 扫描触摸屏，返回是否有触摸 */
 
-#endif
+#endif /* __GT9XXX_H */

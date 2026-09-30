@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-静态验证脚本：
+静态验证脚本（退出码：0 全部通过 / 1 存在未通过项）：
 1. 头文件 API 兼容性（旧版 vs 重写版函数声明对比）
 2. 函数定义覆盖检查（声明过的非 inline 函数必须存在定义）
 3. 重复符号检查（HAL 弱回调 / IRQ Handler / 全局句柄）
 4. include 路径解析检查
 5. BSP 宏引用检查（引用的宏必须已定义）
-6. 关键 CMSIS / FreeRTOS 依赖检查
+6. 关键 CMSIS / FreeRTOS 依赖检查 + F1 残留检查
+7. 厂商标记残留检查（源码与 README 中不得出现原厂商标/站点）
 """
 import io
 import os
 import re
 import subprocess
+import sys
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -29,6 +31,10 @@ INC_PATHS = [  # eide.yml incList（STM32F407）
     os.path.join(BASE, 'driver', 'usart'), os.path.join(BASE, 'driver', 'IIC'),
     os.path.join(BASE, 'driver', '24CXX'), os.path.join(BASE, 'driver', 'TOUCH'),
     os.path.join(BASE, 'middleware', 'MALLOC'),
+    os.path.join(BASE, 'middleware', 'LVGL', 'GUI', 'lvgl'),
+    os.path.join(BASE, 'middleware', 'LVGL', 'GUI', 'lvgl', 'src'),
+    os.path.join(BASE, 'middleware', 'LVGL', 'GUI', 'lvgl', 'examples', 'porting'),
+    os.path.join(BASE, 'middleware', 'LVGL', 'GUI_APP', 'demos'),
     os.path.join(BASE, 'utility'), os.path.join(BASE, 'test', 'stubs'),
     os.path.join(BASE, 'os', 'os_wrapper'), os.path.join(BASE, 'os', 'FreeRTOS'),
     os.path.join(BASE, 'os', 'FreeRTOS', 'include'),
@@ -130,7 +136,19 @@ EXT_PROVIDED = {
     'NVIC_SystemReset', 'assert_param', 'HAL_Delay',
 }
 defs_ok = True
-for h in REWRITTEN:
+# 覆盖检查范围：REWRITTEN（F1→F4 重写过的头文件）之外的驱动/BSP 头文件
+COVERAGE_HEADERS = REWRITTEN + [
+    'driver/LED/drv_led.h', 'driver/ADC/drv_adc.h', 'driver/IWDG/drv_iwdg.h',
+    'driver/IIC/myiic.h', 'driver/24CXX/24cxx.h',
+    'driver/TOUCH/touch.h', 'driver/TOUCH/ctiic.h',
+    'driver/TOUCH/gt9xxx.h', 'driver/TOUCH/ft5206.h',
+    'bsp/bsp_init.h', 'utility/ringbuf.h', 'os/os_wrapper/os_wrapper.h',
+]
+_coverage_seen = set()
+for h in COVERAGE_HEADERS:
+    if h in _coverage_seen:
+        continue
+    _coverage_seen.add(h)
     c = h.replace('.h', '.c')
     if not os.path.exists(os.path.join(BASE, c)):
         continue
@@ -138,15 +156,22 @@ for h in REWRITTEN:
     impl = strip_comments(read(c))
     # 函数定义：name(...) { 且不在注释里（已剥离）
     defined = set(re.findall(r'\b([A-Za-z_]\w*)\s*\([^;{}]*?\)\s*\{', impl))
+    missing = []
     for name in decls:
         if name in EXT_PROVIDED:
             continue
         if 'inline' in decls[name][1]:
             continue
         if name not in defined:
-            defs_ok = False
+            missing.append(name)
+
+    if missing:
+        defs_ok = False
+        for name in missing:
             print(f'[X] {h} 声明的 {name} 在 {c} 中无定义')
-    print(f'[OK] {h} -> {c}')
+        print(f'[X] {h} -> {c}：{len(missing)}/{len(decls)} 个声明无定义')
+    else:
+        print(f'[OK] {h} -> {c}（{len(decls)} 个声明均有定义）')
 
 print()
 print('=' * 60)
@@ -193,8 +218,13 @@ print('=' * 60)
 inc_ok = True
 SCAN_DIRS = ['app', 'bsp', 'common', 'driver', 'middleware', 'utility', 'test',
              os.path.join('os', 'os_wrapper')]
+# 第三方子树不参与 include 自检：LVGL 用自己的包含约定，且仓库里保留了
+# GPU/FreeType/FatFs 等未参与编译的可选后端，它们的头文件本工程并不提供
+SKIP_DIRS = [os.path.join(BASE, 'middleware', 'LVGL')]
 for d in SCAN_DIRS:
     for root, _, files in os.walk(os.path.join(BASE, d)):
+        if any(root.startswith(s) for s in SKIP_DIRS):
+            continue
         for f in files:
             if not f.endswith(('.c', '.h')):
                 continue
@@ -206,7 +236,7 @@ for d in SCAN_DIRS:
                 cand += [os.path.normpath(os.path.join(i, inc)) for i in INC_PATHS]
                 if not any(os.path.exists(c) for c in cand):
                     inc_ok = False
-                    print(f'[X] {os.path.relpath(p, BASE)}: 找不到 include "{inc}"')
+                    print(f"[X] {os.path.relpath(p, BASE).replace(os.sep, '/')}: 找不到 include \"{inc}\"")
 print('[OK] include 全部可解析' if inc_ok else '')
 
 print()
@@ -293,7 +323,57 @@ for key in ['configTICK_RATE_HZ', 'configMAX_SYSCALL_INTERRUPT_PRIORITY']:
     print(f'[OK] {key} = {m.group(1).strip()}' if m else f'[X] {key} 未找到')
 
 print()
-if defs_ok and not dups and inc_ok and macro_ok and deps_ok:
-    print('===== 全部检查通过 =====')
+print('=' * 60)
+print('7. 厂商标记残留检查（源码与 README 内不得出现原厂商标/站点/产品名）')
+print('=' * 60)
+# 说明：只扫 .c/.h 与 README.md。工具脚本本身需要写出这些模式，故不参与自检；
+# 就业项目方案.md 是方案文档，其中引用的是参考书名，不属工程标记，同样排除
+VENDOR_PAT = re.compile(r'正点原子|ALIENTEK|alientek|yuanzige|openedv|星翼电子|战舰|精英板')
+vendor_targets = []
+for d in ('app', 'bsp', 'common', 'driver', 'middleware', 'utility', 'test',
+          os.path.join('os', 'os_wrapper')):
+    for root, _, files in os.walk(os.path.join(BASE, d)):
+        vendor_targets += [os.path.join(root, f) for f in files if f.endswith(('.c', '.h'))]
+vendor_targets.append(os.path.join(BASE, 'README.md'))
+
+vendor_hits = []
+for p in vendor_targets:
+    for i, line in enumerate(read(p).splitlines(), 1):
+        if VENDOR_PAT.search(line):
+            vendor_hits.append(f'{os.path.relpath(p, BASE)}:{i}: {line.strip()}')
+
+if vendor_hits:
+    for h in vendor_hits:
+        print(f'[X] 厂商标记残留: {h}')
 else:
-    print('===== 存在未通过项 =====')
+    print('[OK] 无厂商标记残留')
+vendor_ok = not vendor_hits
+
+print()
+failed = []
+if not api_ok:
+    failed.append('1.API 差异(信息性)')
+if not defs_ok:
+    failed.append('2.函数定义覆盖')
+if dups:
+    failed.append('3.重复符号')
+if not inc_ok:
+    failed.append('4.include 路径')
+if not macro_ok:
+    failed.append('5.BSP 宏引用')
+if not deps_ok:
+    failed.append('6.F4/F1 依赖')
+if not vendor_ok:
+    failed.append('7.厂商标记')
+
+# 第 1 项是「与 git HEAD 的差异」，重写过程中必然有变化，只作信息展示，不参与结论
+blocking = [f for f in failed if not f.startswith('1.')]
+
+if blocking:
+    print('===== 存在未通过项: ' + ', '.join(blocking) + ' =====')
+    sys.exit(1)
+
+print('===== 全部检查通过 =====')
+if failed:
+    print('（信息性提示: ' + ', '.join(failed) + '）')
+sys.exit(0)

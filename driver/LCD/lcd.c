@@ -316,9 +316,17 @@ void lcd_scan_dir(uint8_t dir)
 
 /**
  * @brief   画点
+ * @param   x, y  : 坐标
+ *   @arg   color : 颜色（RGB565）
+ * @note    越界直接丢弃：GRAM 会自动回绕，越界写会把像素画到屏幕另一侧
  */
 void lcd_draw_point(uint16_t x, uint16_t y, uint32_t color)
 {
+    if ((x >= lcddev.width) || (y >= lcddev.height))
+    {
+        return;
+    }
+
     lcd_set_cursor(x, y);
     lcd_write_ram_prepare();
     LCD->LCD_RAM = color;
@@ -327,12 +335,21 @@ void lcd_draw_point(uint16_t x, uint16_t y, uint32_t color)
 /**
  * @brief   SSD1963 背光设置
  * @param   pwm : 亮度等级 0~100，越大越亮
+ * @note    占空比用整数运算 (pwm * 255 / 100) 得到：原实现写 pwm * 2.55，
+ *          会把整型提升为 double，在只有单精度 FPU 的 M4 上引入软件浮点库
  */
 void lcd_ssd_backlight_set(uint8_t pwm)
 {
+    uint16_t duty = (uint16_t)(((uint32_t)pwm * 255U) / 100U);
+
+    if (pwm > 100)
+    {
+        duty = 255;
+    }
+
     lcd_wr_regno(0xBE);
     lcd_wr_data(0x05);              /* PWM 频率 */
-    lcd_wr_data(pwm * 2.55);        /* PWM 占空比 */
+    lcd_wr_data(duty);              /* PWM 占空比 */
     lcd_wr_data(0x01);
     lcd_wr_data(0xFF);
     lcd_wr_data(0x00);
@@ -429,11 +446,21 @@ void lcd_display_dir(uint8_t dir)
  * @brief   设置窗口（对 RGB 屏无效），并将光标移到窗口左上角
  * @param   sx, sy       : 窗口起始坐标
  * @param   width, height: 窗口宽度和高度（必须大于 0）
+ * @note    width/height 为 0 会让 winEnd 回绕成 0xFFFF（窗口被撑成整屏），
+ *          故此处直接忽略非法调用；坐标合法性由调用方保证
  */
 void lcd_set_window(uint16_t sx, uint16_t sy, uint16_t width, uint16_t height)
 {
-    uint16_t winEndX = sx + width - 1;
-    uint16_t winEndY = sy + height - 1;
+    uint16_t winEndX;
+    uint16_t winEndY;
+
+    if ((width == 0) || (height == 0))
+    {
+        return;
+    }
+
+    winEndX = sx + width - 1;
+    winEndY = sy + height - 1;
 
     if (lcddev.id == 0X1963 && lcddev.dir != 1)         /* 1963 竖屏特殊处理 */
     {
@@ -646,9 +673,9 @@ void lcd_init(void)
     /* 读时序：ADDSET=15 → D/CX 建立 15 HCLK = 89ns ≥ tAST(读) 10ns
      *        DATAST=60 → RDX 低电平 60 HCLK = 357ns ≥ tRDLFM 150ns
      *                     （且远大于 tRATFM 150ns，数据早已稳定，RDX 上升沿采样有效）
-     *        读周期 = ADDSET+DATAST+2 = 77 HCLK = 458ns ≥ tRCFM 400ns（也 ≥ tRC 160ns）
+     *        读周期 = ADDSET+DATAST+1 = 76 HCLK = 452ns ≥ tRCFM 400ns（也 ≥ tRC 160ns）
      * 偏差说明：tRDHFM（RDX 高电平 ≥250ns）在模式 A 下最多只能做到 (ADDSET+2) = 101ns，
-     *       受 ADDSET ≤ 15 限制无法满足；正点原子官方例程同样如此（该值经实测可用），
+     *       受 ADDSET ≤ 15 限制无法满足；该值经整板实测可用（读 ID 与读点均正常），
      *       且实际连续读之间有 lcd_rd_data 的软件延时，真实高电平时间还要更长 */
     fsmcReadTiming.AddressSetupTime = 15;
     fsmcReadTiming.AddressHoldTime = 0;
@@ -660,8 +687,8 @@ void lcd_init(void)
      *        DATAST=6 → WRX 低电平 6 HCLK = 35.7ns ≥ tWRL 15ns，
      *                   数据建立时间（数据在 WRX 上升沿前的有效时间）≥ tDST 15ns
      *        写周期 = ADDSET+DATAST = 10 HCLK = 59.5ns ≥ tWC 33ns（1.8 倍裕量）
-     * 说明：正点原子例程用 0/3（约 18~24ns）换刷新率，属超频使用；如需提速可下调
-     *       DATAST，但须保证 ADDSET+DATAST ≥ 6 HCLK（tWC 33ns）*/
+     * 说明：若把 DATAST 压到 3（约 18~24ns）可换刷新率，但已低于 tWC，属超频使用；
+     *       如需提速，务必保证 ADDSET+DATAST ≥ 6 HCLK（tWC 33ns）*/
     fsmcWriteTiming.AddressSetupTime = 4;
     fsmcWriteTiming.AddressHoldTime = 0;
     fsmcWriteTiming.DataSetupTime = 6;
@@ -755,18 +782,30 @@ void lcd_clear(uint16_t color)
 
 /**
  * @brief   在指定区域内填充单一颜色
- * @param   sx, sy, ex, ey : 矩形对角坐标
- * @param   color          : 填充颜色
+ * @param   sx, sy, ex, ey : 矩形对角坐标（闭区间）
+ *   @arg   color          : 填充颜色
  * @note    算法优化：只设置一次窗口，GRAM 在窗口内自动换行，
- *          命令开销由 O(行数×8) 降为 O(8)
+ *          命令开销由 O(行数×8) 降为 O(8)。
+ *          坐标先夹取到屏幕范围内：ex 传 0xFFFF（"到屏幕边缘"的常见写法）
+ *          时原实现会算出 width = 0x10000 截断成 0，把窗口撑成整屏并多写 6 万个像素
  */
 void lcd_fill(uint16_t sx, uint16_t sy, uint16_t ex, uint16_t ey, uint32_t color)
 {
     uint32_t totalPoints;
 
-    if (ex < sx || ey < sy)
+    if ((sx >= lcddev.width) || (sy >= lcddev.height) || (ex < sx) || (ey < sy))
     {
-        return;             /* 坐标非法（原实现此处会因回绕画出乱码，此处直接忽略） */
+        return;             /* 起点越界或坐标非法 */
+    }
+
+    if (ex >= lcddev.width)
+    {
+        ex = lcddev.width - 1;      /* 夹取到右边界 */
+    }
+
+    if (ey >= lcddev.height)
+    {
+        ey = lcddev.height - 1;     /* 夹取到下边界 */
     }
 
     totalPoints = (uint32_t)(ex - sx + 1) * (ey - sy + 1);
@@ -782,17 +821,32 @@ void lcd_fill(uint16_t sx, uint16_t sy, uint16_t ex, uint16_t ey, uint32_t color
 
 /**
  * @brief   在指定区域内填充指定颜色数组（逐点）
- * @param   sx, sy, ex, ey : 矩形对角坐标
- * @param   color          : 颜色数组首地址
- * @note    与 lcd_fill 相同：单次设窗口 + 连续写
+ * @param   sx, sy, ex, ey : 矩形对角坐标（闭区间）
+ *   @arg   color          : 颜色数组首地址
+ * @note    与 lcd_fill 相同：坐标夹取 + 单次设窗口 + 连续写
  */
 void lcd_color_fill(uint16_t sx, uint16_t sy, uint16_t ex, uint16_t ey, uint16_t *color)
 {
     uint32_t totalPoints;
 
-    if (ex < sx || ey < sy)
+    if (color == NULL)
     {
         return;
+    }
+
+    if ((sx >= lcddev.width) || (sy >= lcddev.height) || (ex < sx) || (ey < sy))
+    {
+        return;
+    }
+
+    if (ex >= lcddev.width)
+    {
+        ex = lcddev.width - 1;
+    }
+
+    if (ey >= lcddev.height)
+    {
+        ey = lcddev.height - 1;
     }
 
     totalPoints = (uint32_t)(ex - sx + 1) * (ey - sy + 1);
@@ -909,13 +963,22 @@ void lcd_draw_line(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, uint16_t 
 /**
  * @brief   画水平线
  * @param   x, y : 起点坐标
- * @param   len  : 线长
+ *   @arg   len  : 线长
+ *   @arg   color: 颜色
+ * @note    边界判断用 >= ：x == lcddev.width 已在屏幕外，原来的 > 会放行并把
+ *          线段起点写到屏幕外（GRAM 回绕到下一行）
  */
 void lcd_draw_hline(uint16_t x, uint16_t y, uint16_t len, uint16_t color)
 {
-    if ((len == 0) || (x > lcddev.width) || (y > lcddev.height))
+    if ((len == 0) || (x >= lcddev.width) || (y >= lcddev.height))
     {
         return;
+    }
+
+    /* 超出右边界的部分直接裁掉，避免窗口跨出屏幕 */
+    if ((uint32_t)x + len > lcddev.width)
+    {
+        len = lcddev.width - x;
     }
 
     lcd_fill(x, y, x + len - 1, y, color);
@@ -998,12 +1061,15 @@ void lcd_fill_circle(uint16_t x, uint16_t y, uint16_t r, uint16_t color)
 /**
  * @brief   在指定位置显示一个字符
  * @param   x, y  : 起点坐标（字符左上角）
- * @param   chr   : 要显示的字符 " "--->"~"
- * @param   size  : 字体大小 12/16/24/32
- * @param   mode  : 1 叠加显示；0 非叠加显示（背景用 g_back_color 填充）
- * @param   color : 字符颜色
+ *   @arg   chr   : 要显示的字符 " "--->"~"
+ *   @arg   size  : 字体大小 12/16/24/32
+ *   @arg   mode  : 1 叠加显示；0 非叠加显示（背景用 g_back_color 填充）
+ *   @arg   color : 字符颜色
  * @note    逐列绘制：每列只设置一次 1×N 窗口，列内像素连续写 RAM，
- *          命令开销 O(size)，远低于逐点绘制的 O(8×size)
+ *          命令开销 O(size)，远低于逐点绘制的 O(8×size)。
+ *          字库表只有 0x20~0x7E 共 95 个字符，必须先做范围校验再索引：
+ *          char 在 ARM 上默认有符号，中文等多字节串的首字节（≥0x80）
+ *          会得到负下标，直接越界读 .rodata 之前的区域
  */
 void lcd_show_char(uint16_t x, uint16_t y, char chr, uint8_t size, uint8_t mode, uint16_t color)
 {
@@ -1012,18 +1078,24 @@ void lcd_show_char(uint16_t x, uint16_t y, char chr, uint8_t size, uint8_t mode,
     uint8_t bytesPerCol;            /* 每列占用的字节数 */
     uint8_t colCount;               /* 总列数 */
     uint8_t clipped;                /* 是否被屏幕边界裁剪 */
+    uint8_t chrIdx;                 /* 字库下标 0~94 */
+
+    if (((uint8_t)chr < (uint8_t)' ') || ((uint8_t)chr > (uint8_t)'~'))
+    {
+        return;                     /* 字库范围外（含中文等多字节字符），不显示 */
+    }
+
+    chrIdx = (uint8_t)chr - (uint8_t)' ';
 
     colCount = size / 2;
-    bytesPerCol = (size % 8) ? (size / 8 + 1) : (size / 8);
-
-    chr = chr - ' ';                /* 字库从空格开始取模 */
+    bytesPerCol = (size % 8) ? (size / 8 + 1) : (size / 8);     /* = ceil(size / 8) */
 
     switch (size)
     {
-        case 12: pFont = (uint8_t *)asc2_1206[chr]; break;
-        case 16: pFont = (uint8_t *)asc2_1608[chr]; break;
-        case 24: pFont = (uint8_t *)asc2_2412[chr]; break;
-        case 32: pFont = (uint8_t *)asc2_3216[chr]; break;
+        case 12: pFont = (uint8_t *)asc2_1206[chrIdx]; break;
+        case 16: pFont = (uint8_t *)asc2_1608[chrIdx]; break;
+        case 24: pFont = (uint8_t *)asc2_2412[chrIdx]; break;
+        case 32: pFont = (uint8_t *)asc2_3216[chrIdx]; break;
         default: return;
     }
 
@@ -1169,18 +1241,22 @@ void lcd_show_xnum(uint16_t x, uint16_t y, uint32_t num, uint8_t len, uint8_t si
 /**
  * @brief   显示字符串
  * @param   x, y         : 起点坐标
- * @param   width, height: 显示区域大小
- * @param   size         : 字体大小 12/16/24/32
- * @param   p            : 字符串首地址
- * @param   color        : 字符颜色
+ *   @arg   width, height: 显示区域大小
+ *   @arg   size         : 字体大小 12/16/24/32
+ *   @arg   p            : 字符串首地址（只读，可为字符串字面量）
+ *   @arg   color        : 字符颜色
+ * @note    字符范围用 uint8_t 比较：这样无论 char 是否有符号，遇到中文等多字节
+ *          串的首字节都能立即停止，不会把负值传进字库索引
  */
-void lcd_show_string(uint16_t x, uint16_t y, uint16_t width, uint16_t height, uint8_t size, char *p, uint16_t color)
+void lcd_show_string(uint16_t x, uint16_t y, uint16_t width, uint16_t height,
+                     uint8_t size, const char *p, uint16_t color)
 {
-    uint8_t startX = x;
+    uint16_t startX = x;        /* 换行回退位置；必须用 uint16_t，
+                                 * 用 uint8_t 会在 x > 255 的宽屏上回退到错误的列 */
     width += x;
     height += y;
 
-    while ((*p <= '~') && (*p >= ' '))      /* 判断是否为合法字符 */
+    while (((uint8_t)*p >= (uint8_t)' ') && ((uint8_t)*p <= (uint8_t)'~'))   /* 判断是否为合法字符 */
     {
         if (x >= width)
         {

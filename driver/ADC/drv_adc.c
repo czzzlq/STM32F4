@@ -39,6 +39,13 @@ status_t drv_adc_init(void)
         return STATUS_ERR;
     }
 
+    /* 未做 ADC 自校准（ADC_CR2_CAL）：本工程使用的这份 F4 HAL 既没有
+     * HAL_ADCEx_Calibration_Start()，其 HAL_ADC_Init() 内部也不做校准，
+     * 而校准能把转换结果的固定偏置消掉。当前只用于内部温度/Vrefint 这类
+     * 粗测量（数据手册本身给出的温度传感器绝对精度仅 ±45°C），偏置可忽略。
+     * 若后续要用 ADC 做精密测量，需自行按 RM0090 §11.13 的时序补上：
+     * ADON=1 -> 等 tSTAB -> CAL=1 -> 等 CAL 被硬件清 0 */
+
     /* 内部温度/Vrefint 通道内阻较大，采样时间取最大（480 周期 = 22.8us @21MHz） */
     ADC_ChannelConfTypeDef chanConfig = {0};
     chanConfig.SamplingTime = ADC_SAMPLETIME_480CYCLES;

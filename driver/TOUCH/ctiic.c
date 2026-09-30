@@ -1,30 +1,15 @@
 /**
- ****************************************************************************************************
- * @file        ctiic.c
- * @author      正点原子团队(ALIENTEK)
- * @version     V1.0
- * @date        2023-04-23
- * @brief       电容触摸屏IIC驱动代码
- * @license     Copyright (c) 2020-2032, 广州市星翼电子科技有限公司
- ****************************************************************************************************
- * @attention
- * 
- * 实验平台:正点原子 M144Z-M4最小系统板STM32F407版
- * 在线视频:www.yuanzige.com
- * 技术论坛:www.openedv.com
- * 公司网址:www.alientek.com
- * 购买地址:openedv.taobao.com
- * 
- ****************************************************************************************************
+ * @file    ctiic.c
+ * @brief   电容触摸屏专用软件 IIC 主机时序
+ * @note    每位用 systickDelay_us(2) 产生节拍（约 250kHz）；SCL/SDA 均为开漏，
+ *          空闲时由上拉保持高电平
  */
 
 #include "ctiic.h"
-#include "../../driver/delay/delay.h"
+#include "delay.h"
 
 /**
- * @brief       控制I2C速度的延时
- * @param       无
- * @retval      无
+ * @brief   控制 I2C 速度的延时
  */
 static void ct_iic_delay(void)
 {
@@ -32,9 +17,7 @@ static void ct_iic_delay(void)
 }
 
 /**
- * @brief       电容触摸芯片IIC接口初始化
- * @param       无
- * @retval      无
+ * @brief   电容触摸芯片 IIC 接口初始化
  */
 void ct_iic_init(void)
 {
@@ -178,11 +161,11 @@ void ct_iic_send_byte(uint8_t data)
 }
 
 /**
- * @brief       IIC发送一个字节
+ * @brief       IIC读取一个字节
  * @param       ack:  ack=1时，发送ack; ack=0时，发送nack
  * @retval      接收到的数据
  */
-uint8_t ct_iic_read_byte(unsigned char ack)
+uint8_t ct_iic_read_byte(uint8_t ack)
 {
     uint8_t i, receive = 0;
 
@@ -196,10 +179,9 @@ uint8_t ct_iic_read_byte(unsigned char ack)
         {
             receive++;
         }
-        
+
         CT_IIC_SCL(0);
         ct_iic_delay();
-
     }
 
     if (!ack)

@@ -37,8 +37,9 @@ uint16_t usart1WaitFrame(uint32_t timeoutMs);
 void usart1RxIdleHook(uint16_t len);
 
 /* ==================== 初始化与发送 ==================== */
-/* 串口1初始化（含环形 DMA 接收启动） */
-void usart1Init(uint32_t baudRate);
+/* 串口1初始化（含环形 DMA 接收启动）
+ * retval STATUS_OK / STATUS_ERR（外设初始化失败）/ STATUS_ERR_BUSY（DMA 启动失败） */
+status_t usart1Init(uint32_t baudRate);
 /* 非阻塞发送：数据入 TX 环形缓冲后立即返回（缓冲满时等待消费） */
 void usart1SendAsync(uint8_t *pData, uint16_t len);
 /* 发送完成查询：1 表示缓冲已排空且末字节移位完成 */

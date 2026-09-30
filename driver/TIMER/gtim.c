@@ -111,14 +111,6 @@ void gtim_timx_pwm_setcompare(uint32_t compare)
     GTIM_TIMX_PWM_CHY_CCRX = compare;
 }
 
-/**
- * @brief   读取 PWM 通道捕获值
- */
-uint32_t get_timx_capture(void)
-{
-    return HAL_TIM_ReadCapturedValue(&s_timPwmHandle, GTIM_TIMX_PWM_CHY);
-}
-
 /* ==================== 输入捕获（高电平脉宽测量） ==================== */
 
 /**
@@ -155,7 +147,11 @@ void gtim_timx_cap_chy_init(uint16_t arr, uint16_t psc)
     HAL_TIM_IC_Start_IT(&s_timCapHandle, GTIM_TIMX_CAP_CHY);
     __HAL_TIM_ENABLE_IT(&s_timCapHandle, TIM_IT_UPDATE);
 
-    HAL_NVIC_SetPriority(GTIM_TIMX_CAP_IRQn, 1, 3);
+    /* 优先级 5/0：与 FreeRTOS 的 configMAX_SYSCALL_INTERRUPT_PRIORITY 齐平，
+     * 保证它永远不会插进任务的临界区。本 ISR 不调用 OS API，取 5 只为守住
+     * 「中断优先级不得高于 5」这条规则，避免后续加代码时埋雷；
+     * 注意该中断向量与 btim 的 TIM5 定时中断是同一个（二者互斥使用） */
+    HAL_NVIC_SetPriority(GTIM_TIMX_CAP_IRQn, 5, 0);
     HAL_NVIC_EnableIRQ(GTIM_TIMX_CAP_IRQn);
 }
 
