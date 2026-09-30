@@ -1,0 +1,21 @@
+# 换行策略
+#
+# 工程自有代码统一用 LF：混合换行会让 diff 出现假改动，不同编辑器也会
+# 反复提示"文件尾换行符不一致"。
+#
+# 第三方厂商代码（HAL / CMSIS / LVGL / XMRAM）保持原始字节不做规范化，
+# 否则将来替换上游版本时会产生"整文件都变了"的无意义差异。
+* text=auto eol=lf
+
+core/CMSIS/**                 -text
+core/STM32F4xx_HAL_Driver/**  -text
+middleware/LVGL/**            -text
+middleware/XMRAM/**           -text
+
+# 二进制产物不做任何转换
+*.bin   binary
+*.hex   binary
+*.s19   binary
+*.axf   binary
+*.elf   binary
+*.lib   binary
